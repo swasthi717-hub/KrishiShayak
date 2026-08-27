@@ -1,6 +1,6 @@
-const { success } = require("../../../../src/utils/apiResponse");
-const asyncHandler = require("../../../../src/utils/asyncHandler");
-const cropService = require("../../../../src/services/crop.service");
+const { success } = require("../utils/apiResponse");
+const asyncHandler = require("../utils/asyncHandler");
+const cropService = require("../services/crop.service");
 
 const createCrop = asyncHandler(async (req, res) => {
   const crop = await cropService.createCrop(req.user.id, req.body);

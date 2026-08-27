@@ -1,11 +1,10 @@
-const { supabaseAdmin } = require("../config/db");
-const { ApiError } = require("../utils/errors");
+const farmRepository = require("../repositories/farm.repository");
 const profileService = require("./profile.service");
+const { ApiError } = require("../utils/errors");
 const { FARM_FIELDS } = require("../validators/farm.validator");
 
 function pickFields(payload = {}, fields) {
   const updates = {};
-
   fields.forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(payload, field)) {
       if (field === "farm_name" && typeof payload[field] === "string") {
@@ -15,99 +14,37 @@ function pickFields(payload = {}, fields) {
       }
     }
   });
-
   return updates;
-}
-
-function throwIfDbError(error, fallbackMessage) {
-  if (!error) {
-    return;
-  }
-  throw new ApiError(500, `${fallbackMessage}: ${error.message}`);
 }
 
 async function createFarm(user, payload) {
   await profileService.getOrCreateProfile(user);
-
   const fields = pickFields(payload, FARM_FIELDS);
-  const { data, error } = await supabaseAdmin
-    .from("farms")
-    .insert({
-      ...fields,
-      user_id: user.id,
-    })
-    .select("*")
-    .single();
-
-  throwIfDbError(error, "Failed to create farm");
-  return data;
+  return farmRepository.insert({ ...fields, user_id: user.id });
 }
 
 async function listFarms(userId) {
-  const { data, error } = await supabaseAdmin
-    .from("farms")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  throwIfDbError(error, "Failed to list farms");
-  return data || [];
+  return farmRepository.findByUserId(userId);
 }
 
 async function getOwnedFarm(userId, farmId) {
-  const { data, error } = await supabaseAdmin
-    .from("farms")
-    .select("*")
-    .eq("id", farmId)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  throwIfDbError(error, "Failed to load farm");
-
-  if (!data) {
-    throw ApiError.notFound("Farm not found");
-  }
-
-  return data;
+  const farm = await farmRepository.findOwnedById(userId, farmId);
+  if (!farm) throw ApiError.notFound("Farm not found");
+  return farm;
 }
 
 async function updateFarm(userId, farmId, payload) {
   await getOwnedFarm(userId, farmId);
-
   const updates = pickFields(payload, FARM_FIELDS);
-  if (!Object.keys(updates).length) {
-    throw ApiError.badRequest("No valid farm fields provided");
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("farms")
-    .update(updates)
-    .eq("id", farmId)
-    .eq("user_id", userId)
-    .select("*")
-    .maybeSingle();
-
-  throwIfDbError(error, "Failed to update farm");
-
-  if (!data) {
-    throw ApiError.notFound("Farm not found");
-  }
-
-  return data;
+  if (!Object.keys(updates).length) throw ApiError.badRequest("No valid farm fields provided");
+  const updated = await farmRepository.updateOwnedById(userId, farmId, updates);
+  if (!updated) throw ApiError.notFound("Farm not found");
+  return updated;
 }
 
 async function deleteFarm(userId, farmId) {
   await getOwnedFarm(userId, farmId);
-
-  const { error } = await supabaseAdmin.from("farms").delete().eq("id", farmId).eq("user_id", userId);
-
-  throwIfDbError(error, "Failed to delete farm");
+  await farmRepository.deleteOwnedById(userId, farmId);
 }
 
-module.exports = {
-  createFarm,
-  listFarms,
-  getOwnedFarm,
-  updateFarm,
-  deleteFarm,
-};
+module.exports = { createFarm, listFarms, getOwnedFarm, updateFarm, deleteFarm };

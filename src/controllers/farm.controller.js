@@ -1,6 +1,6 @@
-const { success } = require("../../../../src/utils/apiResponse");
-const asyncHandler = require("../../../../src/utils/asyncHandler");
-const farmService = require("../../../../src/services/farm.service");
+const { success } = require("../utils/apiResponse");
+const asyncHandler = require("../utils/asyncHandler");
+const farmService = require("../services/farm.service");
 
 const createFarm = asyncHandler(async (req, res) => {
   const farm = await farmService.createFarm(req.user, req.body);
