@@ -20,7 +20,7 @@ export async function requestAndSaveFCMToken(userId) {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       const token = await getToken(messaging, {
-        vapidKey: "YOUR_GENERATED_VAPID_PUBLIC_KEY" // Generate from Firebase Console > Cloud Messaging
+        vapidKey: "BDK88O5CeKerTOwCr5qHDQNJvxwpBF_HHVRf0UGdvZ5MZOh36NfBs-bvUcFEV5A0zZqE0c4e_2KZCMVnzefEhPE"
       });
 
       if (token && userId) {
