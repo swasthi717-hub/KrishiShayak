@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { supabase } from "../lib/supabase"; // your existing supabase-js client
+import { supabase } from "./lib/supabase"; // your existing supabase-js client
 
 const firebaseConfig = {
   apiKey: "AIzaSyAmSpv8XBodr9vwgVuNjuxLpK6blDiWTh0",
@@ -18,22 +18,31 @@ export const messaging = getMessaging(app);
 export async function requestAndSaveFCMToken(userId) {
   try {
     const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      const token = await getToken(messaging, {
-        vapidKey: "BDK88O5CeKerTOwCr5qHDQNJvxwpBF_HHVRf0UGdvZ5MZOh36NfBs-bvUcFEV5A0zZqE0c4e_2KZCMVnzefEhPE"
-      });
+    if (permission !== "granted") {
+      console.log("Notification permission not granted");
+      return;
+    }
 
-      if (token && userId) {
-        // Save to Supabase DB profiles table
-        await supabase
-          .from("profiles")
-          .update({ fcm_token: token })
-          .eq("id", userId);
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+      scope: '/firebase-cloud-messaging-push-scope'
+    });
 
-        console.log("FCM Token saved successfully:", token);
-      }
+    const token = await getToken(messaging, {
+      vapidKey: "BDK88O5CeKerTOwCr5qHDQNJvxwpBF_HHVRf0UGdvZ5MZOh36NfBs-bvUcFEV5A0zZqE0c4e_2KZCMVnzefEhPE",
+      serviceWorkerRegistration: registration
+    });
+
+    if (token && userId) {
+      await supabase.from("profiles").update({ fcm_token: token }).eq("id", userId);
+      console.log("FCM Token saved successfully:", token);
     }
   } catch (error) {
     console.error("Error securing FCM token:", error);
   }
+}
+
+export function listenForForegroundMessages(onNotification) {
+  onMessage(messaging, (payload) => {
+    onNotification(payload.notification?.title, payload.notification?.body);
+  });
 }

@@ -1,7 +1,4 @@
-
-
 import Dexie, { type Table } from 'dexie'
-
 export interface CachedRecord {
   id: string
   type: 'weather' | 'mandiPrice' | 'scheme' | 'soilReport' | 'yieldPrediction'
