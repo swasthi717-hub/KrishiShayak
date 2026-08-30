@@ -1,6 +1,10 @@
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+import ResetPassword from "./ResetPassword";
 import LandingPage from "./KrishiSahayakLanding.jsx";
 import KrishiShayakDashboard from "./KrishiShayakDashboard.jsx";
 import AiCopilotPage from "./AiCopilotPage.jsx";
@@ -14,6 +18,7 @@ import ProfilePage from "./ProfilePage.jsx";
 export default function App() {
   return (
     <BrowserRouter>
+    <AuthProvider>
       <Routes>
 
         {/* Landing Page */}
@@ -25,52 +30,94 @@ export default function App() {
         {/* Home / Main Dashboard */}
         <Route
           path="/dashboard"
-          element={<KrishiShayakDashboard />}
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
         />
 
         {/* AI Copilot */}
         <Route
           path="/ai-copilot"
-          element={<AiCopilotPage />}
+          element={
+            <ProtectedRoute>
+              <AiCopilotPage />
+            </ProtectedRoute>
+          }
         />
 
         {/* Weather */}
         <Route
           path="/weather"
-          element={<WeatherPage />}
+          element={
+            <ProtectedRoute>
+              <WeatherPage />
+            </ProtectedRoute>
+          }
         />
 
         {/* Crop Scanner */}
         <Route
           path="/crop-scanner"
-          element={<CropScannerPage />}
+          element={
+            <ProtectedRoute>
+              <CropScannerPage />
+            </ProtectedRoute>
+          }
         />
 
         {/* Mandi Market */}
         <Route
           path="/mandi-market"
-          element={<MandiMarketPage />}
+          element={
+            <ProtectedRoute>
+              <MandiMarketPage />
+            </ProtectedRoute>
+          }
         />
+
 
         {/* Farm Dashboard */}
         <Route
           path="/farm-dashboard"
-          element={<FarmDashboard />}
+          element={
+            <ProtectedRoute>
+              <FarmDashboard />
+            </ProtectedRoute>
+          }
         />
 
         {/* Smart Alerts */}
         <Route
           path="/alerts"
-          element={<SmartAlertsPage />}
+          element={
+            <ProtectedRoute>
+              <SmartAlertsPage />
+            </ProtectedRoute>
+          }
         />
+
 
         {/* Profile */}
         <Route
           path="/profile"
-          element={<ProfilePage />}
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+
+        
+        {/*Reset Password*/}
+        <Route 
+        path="/reset-password" 
+        element={<ResetPassword />} 
         />
 
       </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 };
