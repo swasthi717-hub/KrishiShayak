@@ -1,5 +1,5 @@
 import { db, type CachedRecord } from '../db/localDb'
-import { supabase } from '../lib/supabaseClient'
+import { supabase } from '../lib/supabase'
 
 interface FetchWithCacheResult<T> {
   data: T

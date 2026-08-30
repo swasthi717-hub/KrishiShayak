@@ -1,6 +1,6 @@
 
 import { db, type PendingAction } from '../db/localDb'
-import { supabase } from '../lib/supabaseClient' // your existing supabase-js client
+import { supabase } from '../lib/supabase' // your existing supabase-js client
 
 const MAX_RETRIES = 5
 
