@@ -1,16 +1,76 @@
+import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LandingPage from "./LandingPage";
-import KrishiShayakDashboard from "./KrishiShayakDashboard";
 
-function App() {
+import LandingPage from "./KrishiSahayakLanding.jsx";
+import KrishiShayakDashboard from "./KrishiShayakDashboard.jsx";
+import AiCopilotPage from "./AiCopilotPage.jsx";
+import WeatherPage from "./WeatherPage.jsx";
+import CropScannerPage from "./CropScannerPage.jsx";
+import MandiMarketPage from "./MandiMarketPage.jsx";
+import FarmDashboard from "./FarmDashboard.jsx";
+import SmartAlertsPage from "./SmartAlertsPage.jsx";
+import ProfilePage from "./ProfilePage.jsx";
+
+export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={<KrishiShayakDashboard />} />
+
+        {/* Landing Page */}
+        <Route
+          path="/"
+          element={<LandingPage />}
+        />
+
+        {/* Home / Main Dashboard */}
+        <Route
+          path="/dashboard"
+          element={<KrishiShayakDashboard />}
+        />
+
+        {/* AI Copilot */}
+        <Route
+          path="/ai-copilot"
+          element={<AiCopilotPage />}
+        />
+
+        {/* Weather */}
+        <Route
+          path="/weather"
+          element={<WeatherPage />}
+        />
+
+        {/* Crop Scanner */}
+        <Route
+          path="/crop-scanner"
+          element={<CropScannerPage />}
+        />
+
+        {/* Mandi Market */}
+        <Route
+          path="/mandi-market"
+          element={<MandiMarketPage />}
+        />
+
+        {/* Farm Dashboard */}
+        <Route
+          path="/farm-dashboard"
+          element={<FarmDashboard />}
+        />
+
+        {/* Smart Alerts */}
+        <Route
+          path="/alerts"
+          element={<SmartAlertsPage />}
+        />
+
+        {/* Profile */}
+        <Route
+          path="/profile"
+          element={<ProfilePage />}
+        />
+
       </Routes>
     </BrowserRouter>
   );
-}
-
-export default App;
+};
