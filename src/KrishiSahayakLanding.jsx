@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { signUp, login } from "./services/auth";
 import {
   Leaf,
   Sparkles,
@@ -122,19 +123,73 @@ function AuthModal({
   onClose,
   onSubmit,
 }) {
+  const inputStyle = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: 9,
+  border: "1px solid #d8d2c4",
+  background: "#fff",
+  color: COLORS.deep,
+  fontSize: 14,
+  outline: "none",
+  marginBottom: 10,
+  boxSizing: "border-box",
+};
+
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
   if (!open) return null;
 
-  const inputStyle = {
-    width: "100%",
-    padding: "11px 13px",
-    borderRadius: 9,
-    border: `1px solid ${COLORS.line}`,
-    background: "#faf7f0",
-    fontSize: 14,
-    marginBottom: 10,
-    fontFamily: "'Inter', Arial, sans-serif",
-    boxSizing: "border-box",
-    outline: "none",
+  const handleSubmit = async () => {
+    setError("");
+
+    // Basic validation
+    if (mode === "signup" && !fullName.trim()) {
+      setError("Please enter your full name.");
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+
+    if (mode === "signup" && password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      if (mode === "signup") {
+        await signUp({
+          fullName,
+          email,
+          phone,
+          password,
+        });
+      } else {
+        await login(email, password);
+      }
+
+      onSubmit();
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -142,43 +197,42 @@ function AuthModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(12,61,43,.55)",
+        background: "rgba(0,0,0,.45)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         zIndex: 100,
         padding: 20,
       }}
-      onClick={(e) =>
-        e.target === e.currentTarget && onClose()
-      }
     >
       <div
         style={{
           background: COLORS.paper,
-          borderRadius: 20,
-          padding: 32,
-          maxWidth: 380,
+          borderRadius: 18,
           width: "100%",
+          maxWidth: 420,
+          padding: 28,
           position: "relative",
-          boxShadow: "0 30px 60px rgba(12,61,43,.3)",
+          boxShadow: "0 20px 60px rgba(0,0,0,.18)",
         }}
       >
+        {/* Close button */}
         <button
           onClick={onClose}
           style={{
             position: "absolute",
-            top: 16,
-            right: 16,
-            background: "none",
+            top: 14,
+            right: 14,
             border: 0,
+            background: "transparent",
             cursor: "pointer",
             color: COLORS.muted,
           }}
         >
-          <X size={18} />
+          <X size={20} />
         </button>
 
+        {/* Sign In / Sign Up tabs */}
         <div
           style={{
             display: "flex",
@@ -189,10 +243,12 @@ function AuthModal({
           }}
         >
           <button
-            onClick={() => setMode("signin")}
+            onClick={() => {
+              setMode("signin");
+              setError("");
+            }}
             style={{
               flex: 1,
-              textAlign: "center",
               padding: 9,
               borderRadius: 7,
               fontWeight: 700,
@@ -207,20 +263,18 @@ function AuthModal({
                 mode === "signin"
                   ? COLORS.green
                   : COLORS.muted,
-              boxShadow:
-                mode === "signin"
-                  ? "0 2px 6px rgba(0,0,0,.06)"
-                  : "none",
             }}
           >
             Sign In
           </button>
 
           <button
-            onClick={() => setMode("signup")}
+            onClick={() => {
+              setMode("signup");
+              setError("");
+            }}
             style={{
               flex: 1,
-              textAlign: "center",
               padding: 9,
               borderRadius: 7,
               fontWeight: 700,
@@ -235,10 +289,6 @@ function AuthModal({
                 mode === "signup"
                   ? COLORS.green
                   : COLORS.muted,
-              boxShadow:
-                mode === "signup"
-                  ? "0 2px 6px rgba(0,0,0,.06)"
-                  : "none",
             }}
           >
             Sign Up
@@ -271,14 +321,18 @@ function AuthModal({
 
             <input
               style={inputStyle}
-              type="text"
-              placeholder="Phone number or email"
+              type="email"
+              placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
 
             <input
               style={inputStyle}
               type="password"
               placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
             />
           </>
         ) : (
@@ -309,46 +363,77 @@ function AuthModal({
               style={inputStyle}
               type="text"
               placeholder="Full name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
             />
 
             <input
               style={inputStyle}
               type="email"
               placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
 
             <input
               style={inputStyle}
               type="tel"
-              placeholder="Phone number"
+              placeholder="Phone number (optional)"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
             />
 
             <input
               style={inputStyle}
               type="password"
               placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
             />
           </>
         )}
 
+        {/* Error */}
+        {error && (
+          <p
+            style={{
+              color: "#b42318",
+              background: "#fff0ee",
+              padding: "10px 12px",
+              borderRadius: 8,
+              fontSize: 13,
+              marginTop: 10,
+            }}
+          >
+            {error}
+          </p>
+        )}
+
         <button
-          onClick={onSubmit}
+          onClick={handleSubmit}
+          disabled={loading}
           style={{
             width: "100%",
-            background: COLORS.green,
+            background: loading
+              ? "#8aa99a"
+              : COLORS.green,
             color: "white",
             border: 0,
             padding: 13,
             borderRadius: 9,
             fontWeight: 700,
             fontSize: 14,
-            cursor: "pointer",
-            marginTop: 6,
+            cursor: loading
+              ? "not-allowed"
+              : "pointer",
+            marginTop: 12,
           }}
         >
-          {mode === "signin"
-            ? "Sign In"
-            : "Create Account"}
+          {loading
+            ? "Please wait..."
+            : mode === "signin"
+              ? "Sign In"
+              : "Create Account"}
         </button>
       </div>
     </div>
