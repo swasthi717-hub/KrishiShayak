@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { supabase } from "./supabaseClient"
+import { supabase } from "./lib/supabase"
 
 const firebaseConfig = {
   apiKey: "AIzaSyAmSpv8XBodr9vwgVuNjuxLpK6blDiWTh0",
