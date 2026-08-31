@@ -205,7 +205,7 @@ function AuthModal({
         await login(email, password);
       }
 
-      onSubmit();
+      onSubmit(mode);
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong.");
@@ -624,10 +624,14 @@ export default function KrishiSahayakLanding() {
   /* =====================================================
      STEP 2 + 3 — Navigate to dashboard after Sign In
      ===================================================== */
-  const handleSubmit = () => {
+  const handleSubmit = (mode) => {
     setAuthOpen(false);
 
-    navigate("/dashboard");
+    if (mode === "signup") {
+      navigate("/onboarding");
+    } else {
+      navigate("/dashboard");
+    }
   };
 
   const h2Style = {

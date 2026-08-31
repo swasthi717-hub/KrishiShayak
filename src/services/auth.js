@@ -3,12 +3,12 @@ import { supabase } from "../lib/supabase";
 // ===============================
 // SIGN UP
 // ===============================
-export const signUp = async ({
+export async function signUp({
   fullName,
   email,
   phone,
   password,
-}) => {
+}) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -16,8 +16,8 @@ export const signUp = async ({
     options: {
       data: {
         name: fullName,
-        phone: phone || "",
-        preferred_language: preferredLanguage || "hi",
+        phone: phone || null,
+        preferred_language: "hi",
       },
     },
   });
@@ -27,7 +27,7 @@ export const signUp = async ({
   }
 
   return data;
-};
+}
 
 
 // ===============================

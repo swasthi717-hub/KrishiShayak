@@ -14,6 +14,7 @@ import MandiMarketPage from "./MandiMarketPage.jsx";
 import FarmDashboard from "./FarmDashboard.jsx";
 import SmartAlertsPage from "./SmartAlertsPage.jsx";
 import ProfilePage from "./ProfilePage.jsx";
+import OnboardingPage from "./OnboardingPage.jsx";
 
 export default function App() {
   return (
@@ -25,6 +26,16 @@ export default function App() {
         <Route
           path="/"
           element={<LandingPage />}
+        />
+
+        {/*Onboarding Page*/}
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute>
+              <OnboardingPage />
+            </ProtectedRoute>
+          }
         />
 
         {/* Home / Main Dashboard */}
