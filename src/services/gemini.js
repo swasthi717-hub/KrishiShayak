@@ -1,6 +1,6 @@
 // frontend/src/lib/geminiPrompts.js
 
-const SUPABASE_FUNCTION_URL = "https://her-project-id.supabase.co/functions/v1/ask-gemini";
+const SUPABASE_FUNCTION_URL = "https://qsnlrzkvirtiaqageadh.supabase.co/functions/v1/ask-gemini";
 
 // Generic helper — every feature below uses this to actually call Gemini
 async function callGemini(prompt) {
