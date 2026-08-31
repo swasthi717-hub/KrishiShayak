@@ -17,7 +17,7 @@ export const signUp = async ({
       data: {
         name: fullName,
         phone: phone || "",
-        preferred_language: "hi",
+        preferred_language: preferredLanguage || "hi",
       },
     },
   });

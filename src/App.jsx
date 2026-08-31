@@ -32,7 +32,7 @@ export default function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Dashboard />
+              <KrishiShayakDashboard />
             </ProtectedRoute>
           }
         />
