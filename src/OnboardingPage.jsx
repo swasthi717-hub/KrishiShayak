@@ -258,55 +258,68 @@ export default function OnboardingPage() {
     }
 
     try {
-      setLoading(true);
+        setLoading(true);
 
-      // 1. Update farmer profile
-      const { error: profileError } = await supabase
+        // 1. Update farmer profile
+        const { error: profileError } = await supabase
+            .from("profiles")
+            .update({
+            name: name.trim(),
+            preferred_language: language,
+            state: state.trim() || null,
+            district: district.trim() || null,
+            })
+            .eq("user_id", user.id);
+
+        if (profileError) {
+            throw profileError;
+        }
+
+        // 2. Create farm
+        const { data: farm, error: farmError } = await supabase
+            .from("farms")
+            .insert({
+            user_id: user.id,
+            farm_name: `${name.trim()}'s Farm`,
+            area: Number(area),
+            area_unit: areaUnit,
+            state: state.trim() || null,
+            district: district.trim() || null,
+            })
+            .select()
+            .single();
+
+        if (farmError) {
+            throw farmError;
+        }
+
+        // 3. Create main crop
+        const { error: cropError } = await supabase
+            .from("crops")
+            .insert({
+            farm_id: farm.id,
+            crop_name: crop.trim(),
+            acreage: areaUnit === "acre" ? Number(area) : null,
+            });
+
+        if (cropError) {
+            throw cropError;
+        }
+
+        // 4. Mark onboarding as completed
+        const { error: onboardingError } = await supabase
         .from("profiles")
         .update({
-          name: name.trim(),
-          preferred_language: language,
-          state: state.trim() || null,
-          district: district.trim() || null,
+            onboarding_completed: true,
         })
         .eq("user_id", user.id);
 
-      if (profileError) {
-        throw profileError;
-      }
+        if (onboardingError) {
+        throw onboardingError;
+        }
 
-      // 2. Create farm
-      const { data: farm, error: farmError } = await supabase
-        .from("farms")
-        .insert({
-          user_id: user.id,
-          farm_name: `${name.trim()}'s Farm`,
-          area: Number(area),
-          area_unit: areaUnit,
-          state: state.trim() || null,
-          district: district.trim() || null,
-        })
-        .select()
-        .single();
-
-      if (farmError) {
-        throw farmError;
-      }
-
-      // 3. Create main crop
-      const { error: cropError } = await supabase
-        .from("crops")
-        .insert({
-          farm_id: farm.id,
-          crop_name: crop.trim(),
-          acreage: areaUnit === "acre" ? Number(area) : null,
-        });
-
-      if (cropError) {
-        throw cropError;
-      }
-
-      navigate("/dashboard");
+        //5. go to dashboard
+        navigate("/dashboard");
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong.");
