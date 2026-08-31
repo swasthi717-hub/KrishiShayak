@@ -10,7 +10,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: false, // we're supplying public/manifest.json ourselves
-      includeAssets: ['icons/*.png'],
+      includeAssets: ['favicon.svg'],
       workbox: {
         runtimeCaching: [
           {
