@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { Mic, Volume2, Send, Star, Square } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Mic, Volume2, Send, Star } from "lucide-react";
 import Layout from "./Layout.jsx";
 
-import { getChatResponse } from "./services/gemini.js";
+import { getChatResponse } from "./services/geminiPrompts";
 
 import {
   startListening,
