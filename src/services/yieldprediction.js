@@ -26,10 +26,11 @@ export async function predictYield({ crop, season, state, area, rainfall, fertil
   return results[session.outputNames[0]].data[0];
 }
 
-export function estimateProfit(predictedYield, marketPricePerQuintal, areaInAcres = 1, costPerAcre = 15000) {
-  const revenue = predictedYield * marketPricePerQuintal;
-  const totalCost = costPerAcre * areaInAcres;
-  return revenue - totalCost;
+export function estimateProfit(predictedYield, marketPricePerQuintal, areaInAcres =
+1, costPerAcre = 15000) {
+const revenue = predictedYield * marketPricePerQuintal;
+const totalCost = costPerAcre * areaInAcres;
+return revenue - totalCost;
 }
 
 export async function getYieldFactors() {

@@ -2,6 +2,15 @@ import React, { useRef, useState } from "react";
 import { Camera, Upload, Leaf, CheckCircle2, Eye } from "lucide-react";
 import Layout from "./Layout.jsx";
 
+import {
+  loadDiseaseModel,
+  detectDisease
+} from "./services/diseasedetection.js";
+
+import {
+  getDiseaseExplanation
+} from "./services/gemini";
+
 const TIPS = [
   "Take photo in natural daylight",
   "Focus on the affected leaf clearly",
