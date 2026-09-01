@@ -3,19 +3,11 @@ import * as tflite from '@tensorflow/tfjs-tflite';
 
 let model = null;
 let labels = null;
-
-async function setupBackend() {
-  try {
-    await tf.setBackend('webgpu');
-    await tf.ready();
-  } catch (e) {
-    await tf.setBackend('webgl');
-    await tf.ready();
-  }
-}
+const CONFIDENCE_THRESHOLD = 0.60; 
 
 export async function loadDiseaseModel() {
-  await setupBackend();
+  // NOTE: tfjs-tflite uses its own WASM/XNNPACK runtime —
+  // manual WebGPU/WebGL backend selection is not applicable here.
   model = await tflite.loadTFLiteModel('/models/plant_disease_model.tflite');
   const response = await fetch('/models/labels.json');
   labels = await response.json();
@@ -26,7 +18,7 @@ function preprocessImage(imageElement) {
     return tf.browser.fromPixels(imageElement)
       .resizeNearestNeighbor([224, 224])
       .toFloat()
-      .div(255.0)
+      // NO division by 255 — matches actual Colab training, which used raw 0-255 pixel values
       .expandDims(0);
   });
 }
@@ -46,11 +38,15 @@ export async function detectDisease(imageElement) {
     }
   }
 
-  const diseaseName = labels[maxIndex];
-  const confidence = parseFloat((maxConfidence * 100).toFixed(2));
-
   input.dispose();
   output.dispose();
 
-  return { diseaseName, confidence };
+  if (maxConfidence < CONFIDENCE_THRESHOLD) {
+    return { diseaseName: 'Unknown', confidence: Number((maxConfidence * 100).toFixed(2)) };
+  }
+
+  return {
+    diseaseName: labels[maxIndex],
+    confidence: Number((maxConfidence * 100).toFixed(2))
+  };
 }
