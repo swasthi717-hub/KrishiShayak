@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 import {
@@ -12,7 +12,13 @@ import {
   User,
   Wheat,
   HelpCircle,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
+
+import { getCurrentUser } from "./services/auth";
+import { requestAndSaveFCMToken, listenForForegroundMessages } from "./firebase";
+import { useOfflineSync } from "./hooks/useOfflineSync";
 
 const NAV_ITEMS = [
   { label: "Home", icon: Home, path: "/dashboard" },
@@ -97,6 +103,46 @@ function Sidebar() {
 }
 
 
+/* ================= OFFLINE / SYNC STATUS BADGE ================= */
+// Small pill shown in the TopBar. Reads live from useOfflineSync (file 07),
+// which itself watches Dexie's pendingActions table + the browser's
+// online/offline events — no polling needed, it re-renders automatically
+// whenever the queue changes.
+
+function SyncStatusBadge() {
+  const { isOnline, pendingCount, conflicts, permanentFailures } = useOfflineSync();
+
+  if (isOnline && pendingCount === 0 && conflicts.length === 0 && permanentFailures.length === 0) {
+    return null; // nothing to show when everything's fully synced and online
+  }
+
+  if (!isOnline) {
+    return (
+      <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+        <WifiOff size={12} />
+        Offline{pendingCount > 0 ? ` · ${pendingCount} waiting` : ""}
+      </span>
+    );
+  }
+
+  if (conflicts.length > 0 || permanentFailures.length > 0) {
+    return (
+      <span className="flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">
+        {conflicts.length + permanentFailures.length} need review
+      </span>
+    );
+  }
+
+  // Online, but still draining the queue (e.g. just reconnected)
+  return (
+    <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
+      <RefreshCw size={12} className="animate-spin" />
+      Syncing {pendingCount}
+    </span>
+  );
+}
+
+
 /* ================= TOP BAR ================= */
 
 function TopBar({ title }) {
@@ -110,6 +156,9 @@ function TopBar({ title }) {
       </h1>
 
       <div className="flex items-center gap-4">
+
+        {/* Offline / sync status */}
+        <SyncStatusBadge />
 
         {/* Bell → Smart Alerts */}
         <button
@@ -150,9 +199,58 @@ function HelpButton() {
 }
 
 
+/* ================= FOREGROUND ALERT TOAST ================= */
+// Minimal toast for push notifications that arrive while the app is open
+// and active. onBackgroundMessage (in public/firebase-messaging-sw.js)
+// handles the app-closed/backgrounded case separately — this covers the
+// gap that leaves, since Firebase does NOT show a toast automatically
+// for foreground messages the way it does for background ones.
+
+function ForegroundAlertToast({ alert }) {
+  if (!alert) return null;
+
+  return (
+    <div className="fixed top-4 right-4 z-50 w-80 rounded-xl border border-[#e5dfd2] bg-white p-4 shadow-lg">
+      <p className="text-sm font-semibold text-[#24352a]">{alert.title}</p>
+      {alert.body && <p className="mt-1 text-xs text-slate-500">{alert.body}</p>}
+    </div>
+  );
+}
+
+
 /* ================= LAYOUT ================= */
 
 export default function Layout({ title, children }) {
+  const [foregroundAlert, setForegroundAlert] = useState(null);
+
+  useEffect(() => {
+    let dismissTimer;
+
+    (async () => {
+      // getCurrentUser() reads the active Supabase session — if the user
+      // isn't logged in yet, this resolves to null and we simply skip FCM
+      // setup rather than erroring.
+      const user = await getCurrentUser();
+      if (!user?.id) return;
+
+      // Registers the FCM service worker (on its own scope, so it doesn't
+      // conflict with the Workbox PWA service worker), gets a push token,
+      // and saves it to this user's profile row in Supabase.
+      requestAndSaveFCMToken(user.id);
+
+      // Handles pushes that arrive while this tab is open and focused —
+      // onBackgroundMessage in the SW file only fires when the tab is
+      // closed or backgrounded, so this is the other half of the picture.
+      listenForForegroundMessages((notifTitle, notifBody) => {
+        setForegroundAlert({ title: notifTitle, body: notifBody });
+        clearTimeout(dismissTimer);
+        dismissTimer = setTimeout(() => setForegroundAlert(null), 6000);
+      });
+    })();
+
+    return () => clearTimeout(dismissTimer);
+  }, []);
+
   return (
     <div className="flex h-screen w-full bg-[#faf7ef] font-sans text-[#24352a]">
 
@@ -171,6 +269,8 @@ export default function Layout({ title, children }) {
       </div>
 
       <HelpButton />
+
+      <ForegroundAlertToast alert={foregroundAlert} />
 
     </div>
   );

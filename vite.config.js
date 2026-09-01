@@ -3,7 +3,6 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import tailwindcss from '@tailwindcss/vite'
 
-
 export default defineConfig({
   plugins: [
     react(),
@@ -11,7 +10,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: false, // we're supplying public/manifest.json ourselves
-      includeAssets: ['icons/*.png'],
+      includeAssets: ['favicon.svg'],
       workbox: {
         runtimeCaching: [
           {
