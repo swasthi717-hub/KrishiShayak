@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+
 import {
   Mic,
   Volume2,
@@ -9,13 +10,12 @@ import {
 
 import Layout from "./Layout.jsx";
 
-import {
-  getChatResponse,
-} from "./services/gemini.js";
+import { getChatResponse } from "./services/gemini.js";
 
 import {
   startListening,
-} from "./services/voiceAssistant";
+  stopListening,
+} from "./services/voiceAssistant.js";
 
 import { supabase } from "./lib/supabase";
 
@@ -80,9 +80,13 @@ export default function AiCopilotPage() {
           error: userError,
         } = await supabase.auth.getUser();
 
-        if (userError) throw userError;
+        if (userError) {
+          throw userError;
+        }
 
-        if (!user) return;
+        if (!user) {
+          return;
+        }
 
         const { data, error } = await supabase
           .from("profiles")
@@ -90,7 +94,9 @@ export default function AiCopilotPage() {
           .eq("user_id", user.id)
           .maybeSingle();
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
         if (data?.preferred_language) {
           setPreferredLanguage(data.preferred_language);
@@ -115,7 +121,9 @@ export default function AiCopilotPage() {
   async function sendMessage(text) {
     const trimmed = text.trim();
 
-    if (!trimmed || loading) return;
+    if (!trimmed || loading) {
+      return;
+    }
 
     const userMessage = {
       sender: "user",
@@ -123,7 +131,11 @@ export default function AiCopilotPage() {
       time: "Now",
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+    ]);
+
     setInput("");
     setLoading(true);
 
@@ -144,7 +156,7 @@ export default function AiCopilotPage() {
       ]);
 
       /*
-       * Save both sides of the conversation.
+       * Save conversation history
        */
 
       const {
@@ -152,30 +164,42 @@ export default function AiCopilotPage() {
       } = await supabase.auth.getUser();
 
       if (user) {
-        await supabase.from("ai_chat_history").insert([
-          {
-            user_id: user.id,
-            role: "user",
-            message: trimmed,
-            language_code: preferredLanguage,
-          },
-          {
-            user_id: user.id,
-            role: "assistant",
-            message: response,
-            language_code: preferredLanguage,
-          },
-        ]);
+        const { error } = await supabase
+          .from("ai_chat_history")
+          .insert([
+            {
+              user_id: user.id,
+              role: "user",
+              message: trimmed,
+              language_code: preferredLanguage,
+            },
+            {
+              user_id: user.id,
+              role: "assistant",
+              message: response,
+              language_code: preferredLanguage,
+            },
+          ]);
+
+        if (error) {
+          console.error(
+            "Failed to save chat history:",
+            error
+          );
+        }
       }
     } catch (error) {
-      console.error("Copilot request failed:", error);
+      console.error(
+        "Copilot request failed:",
+        error
+      );
 
       setMessages((prev) => [
         ...prev,
         {
           sender: "ai",
           text:
-            "Sorry, I could not connect to the AI assistant. Please check your internet connection and try again.",
+            "Sorry, I could not connect to the AI assistant. Please try again.",
           time: "Now",
         },
       ]);
@@ -191,23 +215,45 @@ export default function AiCopilotPage() {
    */
 
   function handleVoiceInput() {
-    if (listening) return;
+    if (loading) {
+      return;
+    }
+
+    if (listening) {
+      stopListening();
+      setListening(false);
+      return;
+    }
+
+    const language =
+      LANGUAGE_CODES[preferredLanguage] || "hi-IN";
 
     setListening(true);
 
     startListening({
-      language:
-        LANGUAGE_CODES[preferredLanguage] || "hi-IN",
+      language,
+
+      onStart: () => {
+        console.log(
+          `🎤 Listening in ${language}`
+        );
+
+        setListening(true);
+      },
 
       onResult: (transcript) => {
+        console.log(
+          "🎤 Speech converted to:",
+          transcript
+        );
+
         setInput(transcript);
         setListening(false);
 
+        /*
+         * Send the recognized speech to Gemini.
+         */
         sendMessage(transcript);
-      },
-
-      onStart: () => {
-        setListening(true);
       },
 
       onEnd: () => {
@@ -215,8 +261,23 @@ export default function AiCopilotPage() {
       },
 
       onError: (error) => {
-        console.error("Voice input error:", error);
+        console.error(
+          "🎤 Voice input error:",
+          error
+        );
+
         setListening(false);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "ai",
+            text:
+              error?.message ||
+              "Microphone could not be used. Please check your microphone permission.",
+            time: "Now",
+          },
+        ]);
       },
     });
   }
@@ -228,17 +289,37 @@ export default function AiCopilotPage() {
    */
 
   function speakMessage(text) {
-    if (!("speechSynthesis" in window)) return;
+    if (!("speechSynthesis" in window)) {
+      return;
+    }
 
     window.speechSynthesis.cancel();
 
-    const speech = new SpeechSynthesisUtterance(text);
+    const speech =
+      new SpeechSynthesisUtterance(text);
 
     speech.lang =
-      LANGUAGE_CODES[preferredLanguage] || "hi-IN";
+      LANGUAGE_CODES[preferredLanguage] ||
+      "hi-IN";
 
     window.speechSynthesis.speak(speech);
   }
+
+  /*
+   * ---------------------------------------------------------
+   * CLEANUP
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    return () => {
+      stopListening();
+
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   return (
     <Layout title="AI Copilot">
@@ -253,7 +334,7 @@ export default function AiCopilotPage() {
               <Mic size={22} />
             </div>
 
-            <div>s
+            <div>
               <h2 className="font-serif text-xl font-bold text-[#24352a]">
                 AI Farming Copilot
               </h2>
@@ -263,10 +344,12 @@ export default function AiCopilotPage() {
                 Online · Multilingual
               </p>
             </div>
+
           </div>
 
           {/* QUICK CHIPS */}
           <div className="mt-5 flex flex-wrap gap-2">
+
             {QUICK_CHIPS.map((chip) => (
               <button
                 key={chip}
@@ -277,6 +360,7 @@ export default function AiCopilotPage() {
                 {chip}
               </button>
             ))}
+
           </div>
 
           {/* CHAT */}
@@ -288,17 +372,22 @@ export default function AiCopilotPage() {
                   key={i}
                   className="flex items-start gap-2.5"
                 >
+
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1f5b3d] text-white">
                     <Mic size={14} />
                   </div>
 
                   <div>
+
                     <div className="max-w-xl rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-[#24352a] shadow-sm">
                       {msg.text}
                     </div>
 
                     <div className="mt-1 flex items-center gap-3 text-xs text-slate-400">
-                      <span>{msg.time}</span>
+
+                      <span>
+                        {msg.time}
+                      </span>
 
                       <button
                         type="button"
@@ -310,8 +399,11 @@ export default function AiCopilotPage() {
                         <Volume2 size={12} />
                         Listen
                       </button>
+
                     </div>
+
                   </div>
+
                 </div>
               ) : (
                 <div
@@ -334,6 +426,7 @@ export default function AiCopilotPage() {
                 AI is thinking...
               </div>
             )}
+
           </div>
 
           {/* INPUT */}
@@ -342,10 +435,15 @@ export default function AiCopilotPage() {
             <button
               type="button"
               onClick={handleVoiceInput}
-              disabled={listening || loading}
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white ${
+              disabled={loading}
+              title={
                 listening
-                  ? "bg-orange-500"
+                  ? "Stop listening"
+                  : "Speak"
+              }
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition ${
+                listening
+                  ? "bg-orange-500 hover:bg-orange-600"
                   : "bg-[#1f5b3d] hover:bg-[#173b27]"
               }`}
             >
@@ -358,27 +456,39 @@ export default function AiCopilotPage() {
                 setInput(e.target.value)
               }
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey
+                ) {
+                  e.preventDefault();
                   sendMessage(input);
                 }
               }}
-              placeholder="Type or speak in any language..."
+              placeholder={
+                listening
+                  ? "Listening..."
+                  : "Type or speak in any language..."
+              }
               className="h-11 flex-1 rounded-full border border-[#e5dfd2] bg-white px-4 text-sm text-[#24352a] outline-none placeholder:text-slate-400 focus:border-[#1f5b3d]"
             />
 
             <button
+              type="button"
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || loading}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#c9d9bd] text-[#4a5c3f] disabled:opacity-60 enabled:bg-[#1f5b3d] enabled:text-white enabled:hover:bg-[#173b27]"
             >
               <Send size={16} />
             </button>
+
           </div>
+
         </div>
 
         {/* RIGHT COLUMN */}
         <div className="space-y-5">
 
+          {/* SAMPLE QUESTIONS */}
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
             <p className="flex items-center gap-2 font-serif text-base font-bold text-[#24352a]">
@@ -402,9 +512,12 @@ export default function AiCopilotPage() {
                   {q}
                 </button>
               ))}
+
             </div>
+
           </div>
 
+          {/* LANGUAGE */}
           <div className="rounded-2xl bg-[#e7edda] p-5">
 
             <p className="font-serif text-base font-bold text-[#24352a]">
@@ -412,15 +525,20 @@ export default function AiCopilotPage() {
             </p>
 
             <p className="mt-2 text-sm text-[#3d4d40]">
-              {getLanguageName(preferredLanguage)}
+              {getLanguageName(
+                preferredLanguage
+              )}
             </p>
 
             <p className="mt-2 text-xs text-slate-500">
               The Copilot uses your language preference saved in
               your profile. You don't need to select it again.
             </p>
+
           </div>
+
         </div>
+
       </div>
     </Layout>
   );

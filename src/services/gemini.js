@@ -1,8 +1,4 @@
-// frontend/src/lib/geminiPrompts.js
-
-const ASK_GEMINI_URL =
-  "https://qsnlrzkvirtiaqageadh.supabase.co/functions/v1/ask-gemini";
-
+import { supabase } from "./supabase";
 
 // =============================================================
 // SUPPORTED LANGUAGES
@@ -28,23 +24,19 @@ const LANGUAGE_NAMES = {
 // =============================================================
 
 async function callGemini(prompt) {
-  const response = await fetch(ASK_GEMINI_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const { data, error } = await supabase.functions.invoke("ask-gemini", {
+    body: {
       prompt,
-    }),
+    },
   });
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || "Gemini request failed");
+  if (error) {
+    console.error("Gemini Edge Function error:", error);
+    throw new Error(error.message || "Gemini request failed");
   }
 
-  if (!data.text) {
+  if (!data?.text) {
+    console.error("Gemini returned:", data);
     throw new Error("Gemini returned an empty response");
   }
 

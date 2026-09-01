@@ -1,59 +1,114 @@
-const recognition =
-  typeof window !== "undefined"
-    ? window.SpeechRecognition ||
-      window.webkitSpeechRecognition
-    : null;
+let recognition = null;
 
 export function startListening({
   language = "hi-IN",
-  onResult,
   onStart,
+  onResult,
   onEnd,
   onError,
 }) {
-  if (!recognition) {
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
+
+  // Browser does not support speech recognition
+  if (!SpeechRecognition) {
     const error = new Error(
-      "Speech recognition is not supported in this browser."
+      "Speech recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge."
     );
 
-    if (onError) {
-      onError(error);
-    }
-
-    return null;
+    console.error(error);
+    onError?.(error);
+    return;
   }
 
-  const instance = new recognition();
+  // Stop an existing recognition session
+  if (recognition) {
+    try {
+      recognition.stop();
+    } catch {
+      // Ignore if already stopped
+    }
 
-  instance.lang = language;
-  instance.continuous = false;
-  instance.interimResults = false;
-  instance.maxAlternatives = 1;
+    recognition = null;
+  }
 
-  instance.onstart = () => {
-    if (onStart) onStart();
+  recognition = new SpeechRecognition();
+
+  recognition.lang = language;
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    console.log("🎤 Speech recognition started");
+    onStart?.();
   };
 
-  instance.onresult = (event) => {
+  recognition.onresult = (event) => {
     const transcript =
-      event.results[0][0].transcript;
+      event.results?.[0]?.[0]?.transcript?.trim();
 
-    if (onResult) {
-      onResult(transcript);
+    console.log("🎤 Transcript:", transcript);
+
+    if (transcript) {
+      onResult?.(transcript);
     }
   };
 
-  instance.onerror = (event) => {
-    if (onError) {
-      onError(event);
+  recognition.onerror = (event) => {
+    console.error(
+      "🎤 Speech recognition error:",
+      event.error
+    );
+
+    let message = "Could not use the microphone.";
+
+    if (event.error === "not-allowed") {
+      message =
+        "Microphone permission was denied. Please allow microphone access in your browser.";
+    } else if (event.error === "no-speech") {
+      message =
+        "No speech was detected. Please try speaking again.";
+    } else if (event.error === "audio-capture") {
+      message =
+        "No microphone was found. Please check your microphone.";
+    } else if (event.error === "network") {
+      message =
+        "Speech recognition could not connect to the speech service.";
     }
+
+    onError?.(new Error(message));
   };
 
-  instance.onend = () => {
-    if (onEnd) onEnd();
+  recognition.onend = () => {
+    console.log("🎤 Speech recognition ended");
+
+    recognition = null;
+    onEnd?.();
   };
 
-  instance.start();
+  try {
+    recognition.start();
+  } catch (error) {
+    console.error(
+      "🎤 Could not start speech recognition:",
+      error
+    );
 
-  return instance;
+    recognition = null;
+    onError?.(error);
+  }
+}
+
+export function stopListening() {
+  if (recognition) {
+    try {
+      recognition.stop();
+    } catch {
+      // Ignore if already stopped
+    }
+
+    recognition = null;
+  }
 }
