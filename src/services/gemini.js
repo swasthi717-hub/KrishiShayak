@@ -36,10 +36,20 @@ return callGemini(prompt);
 // -------------------------------------------------------------
 // 2. MULTILINGUAL CHAT ASSISTANT
 // -------------------------------------------------------------
-export async function getChatResponse(question, language = "English") {
-  const prompt = `You are KrishiShayak, a farming assistant for Indian farmers.
-Respond in ${language}. Use simple, practical language. If the question is
-unrelated to farming, politely redirect. Farmer's question: ${question}`;
+export async function getChatResponse(question) {
+  const prompt = `You are a friendly farming assistant helping Indian farmers with crop,
+weather, and farming-related questions.
+
+Respond in the SAME language the farmer used in their question.
+
+Keep the answer simple, practical, and easy to understand for someone
+without technical background.
+
+If the question is not related to farming, politely redirect them to
+ask farming-related questions.
+
+Farmer's question:
+${question}`;
 
   return callGemini(prompt);
 }
