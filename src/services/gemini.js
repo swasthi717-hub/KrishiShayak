@@ -1,4 +1,5 @@
-
+const ASK_GEMINI_URL =
+  "https://qsnlrzkvirtiaqageadh.supabase.co/functions/v1/ask-gemini";
 
 // =============================================================
 // SUPPORTED LANGUAGES
