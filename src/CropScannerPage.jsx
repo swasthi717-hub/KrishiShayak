@@ -9,7 +9,7 @@ import {
 
 import {
   getDiseaseExplanation
-} from "./services/gemini";
+} from "./services/gemini.js";
 
 const TIPS = [
   "Take photo in natural daylight",

@@ -17,9 +17,9 @@ import {
   predictYield,
   estimateProfit,
   getYieldFactors,
-} from "./services/yieldPrediction";
+} from "./services/yieldprediction.js";
 
-import { getYieldExplanation } from "./services/gemini";
+import { getYieldExplanation } from "./services/gemini.js";
 
 export default function FarmDashboardPage() {
   // =========================================================
