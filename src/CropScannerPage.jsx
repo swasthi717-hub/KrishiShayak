@@ -17,7 +17,7 @@ import {
   detectDisease,
 } from "./services/diseaseDetection";
 
-import { getDiseaseExplanation } from "./lib/geminiPrompts";
+import { getDiseaseExplanation } from "./services/gemini.js";
 
 import { supabase } from "./lib/supabase";
 
