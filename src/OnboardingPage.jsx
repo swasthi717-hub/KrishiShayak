@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./context/AuthContext";
+import { getCurrentLocation } from "./services/location";
 
 const languages = [
   { code: "hi", name: "हिन्दी", english: "Hindi" },
@@ -230,6 +231,8 @@ export default function OnboardingPage() {
   const [district, setDistrict] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [locationStep, setLocationStep] = useState(false);
+  const [farmId, setFarmId] = useState(null);
 
   const t = translations[language] || translations.en;
 
@@ -258,68 +261,151 @@ export default function OnboardingPage() {
     }
 
     try {
-        setLoading(true);
+      setLoading(true);
 
-        // 1. Update farmer profile
-        const { error: profileError } = await supabase
-            .from("profiles")
-            .update({
-            name: name.trim(),
-            preferred_language: language,
-            state: state.trim() || null,
-            district: district.trim() || null,
-            })
-            .eq("user_id", user.id);
-
-        if (profileError) {
-            throw profileError;
-        }
-
-        // 2. Create farm
-        const { data: farm, error: farmError } = await supabase
-            .from("farms")
-            .insert({
-            user_id: user.id,
-            farm_name: `${name.trim()}'s Farm`,
-            area: Number(area),
-            area_unit: areaUnit,
-            state: state.trim() || null,
-            district: district.trim() || null,
-            })
-            .select()
-            .single();
-
-        if (farmError) {
-            throw farmError;
-        }
-
-        // 3. Create main crop
-        const { error: cropError } = await supabase
-            .from("crops")
-            .insert({
-            farm_id: farm.id,
-            crop_name: crop.trim(),
-            acreage: areaUnit === "acre" ? Number(area) : null,
-            });
-
-        if (cropError) {
-            throw cropError;
-        }
-
-        // 4. Mark onboarding as completed
-        const { error: onboardingError } = await supabase
+      // 1. Update farmer profile
+      const { error: profileError } = await supabase
         .from("profiles")
         .update({
-            onboarding_completed: true,
+          name: name.trim(),
+          preferred_language: language,
+          state: state.trim() || null,
+          district: district.trim() || null,
         })
         .eq("user_id", user.id);
 
-        if (onboardingError) {
-        throw onboardingError;
-        }
+      if (profileError) {
+        throw profileError;
+      }
 
-        //5. go to dashboard
-        navigate("/dashboard");
+      // 2. Create farm
+      const { data: farm, error: farmError } = await supabase
+        .from("farms")
+        .insert({
+          user_id: user.id,
+          farm_name: `${name.trim()}'s Farm`,
+          area: Number(area),
+          area_unit: areaUnit,
+          state: state.trim() || null,
+          district: district.trim() || null,
+        })
+        .select()
+        .single();
+
+      if (farmError) {
+        throw farmError;
+      }
+
+      // 3. Create main crop
+      const { error: cropError } = await supabase
+        .from("crops")
+        .insert({
+          farm_id: farm.id,
+          crop_name: crop.trim(),
+          acreage: areaUnit === "acre" ? Number(area) : null,
+        });
+
+      if (cropError) {
+        throw cropError;
+      }
+
+      // 4. Save the newly created farm ID
+      setFarmId(farm.id);
+
+      // 5. Move to location permission step
+      setLocationStep(true);
+
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  //Location permission
+  const handleGetLocation = async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      const location = await getCurrentLocation();
+
+      console.log("Farmer GPS location:", location);
+
+      // Update the farm with GPS information
+      const { error: locationError } = await supabase
+        .from("farms")
+        .update({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          location_accuracy_meters: location.accuracy,
+          location_source: "gps",
+          location_updated_at: new Date().toISOString(),
+        })
+        .eq("id", farmId);
+
+      if (locationError) {
+        throw locationError;
+      }
+
+      // Mark onboarding as completed
+      const { error: onboardingError } = await supabase
+        .from("profiles")
+        .update({
+          onboarding_completed: true,
+        })
+        .eq("user_id", user.id);
+
+      if (onboardingError) {
+        throw onboardingError;
+      }
+
+      // Go to dashboard
+      navigate("/dashboard");
+
+    } catch (err) {
+      console.error("Location error:", err);
+
+      let message = "Unable to get your location.";
+
+      if (err.code === 1) {
+        message =
+          "Location permission was denied. You can allow it from your browser settings.";
+      } else if (err.code === 2) {
+        message =
+          "Your location could not be determined. Please try again.";
+      } else if (err.code === 3) {
+        message =
+          "Location request timed out. Please try again.";
+      }
+
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  //Location permission skip
+  const handleSkipLocation = async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      const { error: onboardingError } = await supabase
+        .from("profiles")
+        .update({
+          onboarding_completed: true,
+        })
+        .eq("user_id", user.id);
+
+      if (onboardingError) {
+        throw onboardingError;
+      }
+
+      navigate("/dashboard");
+
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong.");
