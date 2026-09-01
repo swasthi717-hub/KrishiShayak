@@ -1,20 +1,8 @@
-// frontend/src/services/voiceAssistant.js
-
-let recognition = null;
-
-/*
-  Start listening to the farmer's voice.
-
-  language:
-    Hindi     -> hi-IN
-    Marathi   -> mr-IN
-    Tamil     -> ta-IN
-    Telugu    -> te-IN
-    Kannada   -> kn-IN
-    Punjabi   -> pa-IN
-    Bengali   -> bn-IN
-    English   -> en-IN
-*/
+const recognition =
+  typeof window !== "undefined"
+    ? window.SpeechRecognition ||
+      window.webkitSpeechRecognition
+    : null;
 
 export function startListening({
   language = "hi-IN",
@@ -23,85 +11,49 @@ export function startListening({
   onEnd,
   onError,
 }) {
-  const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if (!SpeechRecognition) {
-    onError?.(
-      "Voice input is not supported in this browser. Please use Chrome or Edge."
+  if (!recognition) {
+    const error = new Error(
+      "Speech recognition is not supported in this browser."
     );
-    return;
+
+    if (onError) {
+      onError(error);
+    }
+
+    return null;
   }
 
-  // Stop an existing recognition session
-  if (recognition) {
-    recognition.stop();
-  }
+  const instance = new recognition();
 
-  recognition = new SpeechRecognition();
+  instance.lang = language;
+  instance.continuous = false;
+  instance.interimResults = false;
+  instance.maxAlternatives = 1;
 
-  recognition.lang = language;
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-
-  recognition.onstart = () => {
-    onStart?.();
+  instance.onstart = () => {
+    if (onStart) onStart();
   };
 
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
+  instance.onresult = (event) => {
+    const transcript =
+      event.results[0][0].transcript;
 
-    onResult?.(transcript);
+    if (onResult) {
+      onResult(transcript);
+    }
   };
 
-  recognition.onerror = (event) => {
-    console.error("Speech recognition error:", event.error);
-
-    onError?.(event.error);
+  instance.onerror = (event) => {
+    if (onError) {
+      onError(event);
+    }
   };
 
-  recognition.onend = () => {
-    onEnd?.();
+  instance.onend = () => {
+    if (onEnd) onEnd();
   };
 
-  recognition.start();
-}
+  instance.start();
 
-export function stopListening() {
-  if (recognition) {
-    recognition.stop();
-    recognition = null;
-  }
-}
-
-/*
-  Speak Gemini's response aloud.
-
-  The language should match the farmer's language.
-*/
-
-export function speakResponse(text, language = "hi-IN") {
-  if (!("speechSynthesis" in window)) {
-    console.warn("Speech synthesis is not supported in this browser.");
-    return;
-  }
-
-  // Stop anything currently being spoken
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-
-  utterance.lang = language;
-  utterance.rate = 0.9;
-  utterance.pitch = 1;
-  utterance.volume = 1;
-
-  window.speechSynthesis.speak(utterance);
-}
-
-export function stopSpeaking() {
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
-  }
+  return instance;
 }
