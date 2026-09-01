@@ -16,7 +16,7 @@ import {
   loadYieldModel,
   predictYield,
   estimateProfit,
-} from "./services/yieldPrediction";
+} from "./services/yieldprediction";
 
 export default function FarmDashboardPage() {
   const [rainfall, setRainfall] = useState(50);
@@ -29,6 +29,30 @@ export default function FarmDashboardPage() {
 
   /*
    * ---------------------------------------------------------
+   * FARM / MODEL INPUTS
+   * ---------------------------------------------------------
+   *
+   * These values are used because the ONNX model expects:
+   *
+   * crop
+   * season
+   * state
+   * area
+   * rainfall
+   * fertilizer
+   * pesticide
+   *
+   * Rainfall and fertilizer are controlled by the sliders.
+   */
+
+  const crop = "Cotton";
+  const season = "Kharif";
+  const state = "Maharashtra";
+  const area = 4.2;
+  const pesticide = 50;
+
+  /*
+   * ---------------------------------------------------------
    * LOAD YIELD MODEL
    * ---------------------------------------------------------
    */
@@ -37,9 +61,13 @@ export default function FarmDashboardPage() {
     async function initializeModel() {
       try {
         setModelLoading(true);
+
         await loadYieldModel();
       } catch (error) {
-        console.error("Failed to load yield model:", error);
+        console.error(
+          "Failed to load yield model:",
+          error
+        );
       } finally {
         setModelLoading(false);
       }
@@ -50,52 +78,129 @@ export default function FarmDashboardPage() {
 
   /*
    * ---------------------------------------------------------
-   * RUN LOCAL YIELD MODEL WHEN SLIDERS CHANGE
+   * RUN YIELD PREDICTION
    * ---------------------------------------------------------
+   *
+   * Runs every time rainfall or fertilizer changes.
    */
 
   useEffect(() => {
     if (modelLoading) return;
 
+    let cancelled = false;
+
     async function runPrediction() {
       try {
         const inputs = {
+          crop,
+          season,
+          state,
+          area,
           rainfall,
           fertilizer,
+          pesticide,
         };
 
         const result = await predictYield(inputs);
 
+        /*
+         * Support either:
+         *
+         * predictYield() -> number
+         *
+         * or
+         *
+         * predictYield() -> { predictedYield: number }
+         */
+
         const yieldValue =
           typeof result === "number"
             ? result
-            : result?.predictedYield ?? result?.yield ?? 0;
+            : Number(
+                result?.predictedYield ??
+                  result?.yield ??
+                  0
+              );
 
-        const profitValue = estimateProfit(yieldValue);
-
-        setPredictedYield(Number(yieldValue));
-        setPredictedProfit(Number(profitValue));
-      } catch (error) {
-        console.error("Yield prediction failed:", error);
+        if (!Number.isFinite(yieldValue)) {
+          throw new Error(
+            "Yield prediction returned an invalid number"
+          );
+        }
 
         /*
-         * Temporary fallback so the UI doesn't break
-         * if the model fails to load.
+         * Market price used for the What-If calculation.
+         *
+         * This is NOT Gemini.
+         * It is simply the supplied/reference price used
+         * to calculate estimated profit.
          */
 
-        const fallbackYield = Math.round(
-          22 +
-            (rainfall - 50) * 0.08 +
-            (fertilizer - 40) * 0.03
+        const marketPricePerQuintal = 1900;
+
+        const profitValue = estimateProfit(
+          yieldValue,
+          marketPricePerQuintal,
+          area,
+          15000
         );
 
-        setPredictedYield(fallbackYield);
-        setPredictedProfit(fallbackYield * 1900);
+        if (!Number.isFinite(profitValue)) {
+          throw new Error(
+            "Profit calculation returned an invalid number"
+          );
+        }
+
+        if (cancelled) return;
+
+        setPredictedYield(yieldValue);
+        setPredictedProfit(profitValue);
+      } catch (error) {
+        console.error(
+          "Yield prediction failed:",
+          error
+        );
+
+        /*
+         * Safe local fallback.
+         *
+         * This prevents NaN/undefined from appearing if
+         * the ONNX model cannot be loaded or returns an
+         * invalid value.
+         *
+         * The fallback is only used when the model fails.
+         */
+
+        const fallbackYield =
+          22 +
+          (Number(rainfall) - 50) * 0.08 +
+          (Number(fertilizer) - 40) * 0.03;
+
+        const safeYield = Math.max(
+          0,
+          Number(fallbackYield)
+        );
+
+        const fallbackProfit =
+          safeYield * 1900 - area * 15000;
+
+        if (cancelled) return;
+
+        setPredictedYield(safeYield);
+        setPredictedProfit(fallbackProfit);
       }
     }
 
     runPrediction();
-  }, [rainfall, fertilizer, modelLoading]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    rainfall,
+    fertilizer,
+    modelLoading,
+  ]);
 
   return (
     <Layout title="Farm Dashboard">
@@ -442,7 +547,10 @@ export default function FarmDashboardPage() {
 
               <div className="mt-5">
                 <p className="font-serif text-3xl font-bold text-[#2f7357]">
-                  {Number(predictedYield).toFixed(1)} Q
+                  {Number.isFinite(Number(predictedYield))
+                    ? Number(predictedYield).toFixed(1)
+                    : "0.0"}{" "}
+                  Q
                 </p>
 
                 <p className="text-sm text-slate-500">
@@ -454,7 +562,16 @@ export default function FarmDashboardPage() {
 
               <div>
                 <p className="text-2xl font-bold text-green-600">
-                  ₹{Number(predictedProfit).toLocaleString("en-IN")}
+                  ₹
+                  {Number.isFinite(
+                    Number(predictedProfit)
+                  )
+                    ? Number(
+                        predictedProfit
+                      ).toLocaleString("en-IN", {
+                        maximumFractionDigits: 0,
+                      })
+                    : "0"}
                 </p>
 
                 <p className="text-sm text-slate-500">

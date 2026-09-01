@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+
 
 // =============================================================
 // SUPPORTED LANGUAGES
