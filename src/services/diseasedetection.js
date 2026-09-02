@@ -1,67 +1,23 @@
-import * as tf from "@tensorflow/tfjs";
-import "@tensorflow/tfjs-backend-cpu";
-import * as tflite from "@tensorflow/tfjs-tflite";
+import * as ort from "onnxruntime-web";
 
-let model = null;
+const MODEL_PATH = "/models/plant_disease_model.onnx";
+const LABELS_PATH = "/models/labels.json";
+
+const IMAGE_SIZE = 224;
+const NUM_CLASSES = 15;
+const CONFIDENCE_THRESHOLD = 0.60;
+
+let session = null;
 let labels = null;
 let loadingPromise = null;
 
-const CONFIDENCE_THRESHOLD = 0.60;
-
-const MODEL_PATH = "/models/plant_disease_model.tflite";
-const LABELS_PATH = "/models/labels.json";
-
 /**
- * Load labels.json safely.
- */
-async function loadLabels() {
-  const response = await fetch(LABELS_PATH, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Could not load labels.json (${response.status} ${response.statusText})`
-    );
-  }
-
-  const data = await response.json();
-
-  /*
-   * Support either:
-   *
-   * ["Healthy", "Early Blight", "Late Blight"]
-   *
-   * OR:
-   *
-   * {
-   *   "0": "Healthy",
-   *   "1": "Early Blight",
-   *   "2": "Late Blight"
-   * }
-   */
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (data && typeof data === "object") {
-    return Object.keys(data)
-      .sort((a, b) => Number(a) - Number(b))
-      .map((key) => data[key]);
-  }
-
-  throw new Error("labels.json has an unsupported format.");
-}
-
-/**
- * Load the TFLite disease model once.
+ * Load the ONNX disease model and labels.
+ * The model is loaded only once.
  */
 export async function loadDiseaseModel() {
-  if (model && labels) {
-    return {
-      model,
-      labels,
-    };
+  if (session && labels) {
+    return;
   }
 
   if (loadingPromise) {
@@ -70,71 +26,64 @@ export async function loadDiseaseModel() {
 
   loadingPromise = (async () => {
     try {
-      console.log("Loading disease detection model...");
+      console.log("Loading ONNX disease model...");
 
-      /*
-       * tfjs-tflite runs its own TFLite WASM runtime.
-       *
-       * We still initialize TFJS because it is used to create
-       * the input tensor.
-       */
-      await tf.ready();
+      // Make sure ONNX Runtime is ready.
+      await ort.env.wasm;
 
-      console.log("TensorFlow.js backend:", tf.getBackend());
-
-      /*
-       * Load the TFLite model.
-       */
-      const loadedModel = await tflite.loadTFLiteModel(MODEL_PATH, {
-        numThreads: Math.max(
-          1,
-          Math.min(
-            4,
-            Math.floor((navigator.hardwareConcurrency || 2) / 2)
-          )
-        ),
+      session = await ort.InferenceSession.create(MODEL_PATH, {
+        executionProviders: ["wasm"],
       });
 
+      console.log("ONNX disease model loaded.");
+      console.log("Model inputs:", session.inputNames);
+      console.log("Model outputs:", session.outputNames);
+
+      const labelsResponse = await fetch(LABELS_PATH);
+
+      if (!labelsResponse.ok) {
+        throw new Error(
+          `Failed to load disease labels: ${labelsResponse.status}`
+        );
+      }
+
+      const labelsData = await labelsResponse.json();
+
       /*
-       * Load class labels.
+       * Support either:
+       * ["Disease A", "Disease B", ...]
+       *
+       * or:
+       * { "0": "Disease A", "1": "Disease B", ... }
        */
-      const loadedLabels = await loadLabels();
-
-      if (!loadedLabels.length) {
-        throw new Error("No disease labels were found.");
+      if (Array.isArray(labelsData)) {
+        labels = labelsData;
+      } else if (labelsData && typeof labelsData === "object") {
+        labels = Array.from(
+          { length: NUM_CLASSES },
+          (_, index) => labelsData[String(index)]
+        );
+      } else {
+        throw new Error("Invalid labels.json format.");
       }
 
-      model = loadedModel;
-      labels = loadedLabels;
-
-      console.log("Disease model loaded successfully.");
-      console.log("Disease labels:", labels);
-
-      /*
-       * Print model information when available.
-       * This is extremely useful if input dimensions are wrong.
-       */
-      if (model.inputs) {
-        console.log("Disease model inputs:", model.inputs);
+      if (labels.length !== NUM_CLASSES) {
+        console.warn(
+          `Expected ${NUM_CLASSES} disease labels but found ${labels.length}.`
+        );
       }
 
-      if (model.outputs) {
-        console.log("Disease model outputs:", model.outputs);
-      }
+      console.log("Disease labels loaded:", labels);
 
-      return {
-        model,
-        labels,
-      };
+      return true;
     } catch (error) {
-      model = null;
+      session = null;
       labels = null;
 
-      console.error("Disease model loading failed:", error);
+      console.error("Failed to load ONNX disease model:", error);
 
       throw new Error(
-        error?.message ||
-          "Unable to load the plant disease detection model."
+        `Disease model failed to load: ${error.message || error}`
       );
     } finally {
       loadingPromise = null;
@@ -145,161 +94,157 @@ export async function loadDiseaseModel() {
 }
 
 /**
- * Convert an image into the format expected by the model.
+ * Convert an image element into the model's expected
+ * [1, 224, 224, 3] Float32 tensor.
  *
  * IMPORTANT:
- * This keeps your original preprocessing:
- *
- * - 224 x 224
- * - float32
- * - raw 0-255 pixels
- *
- * Do NOT change this to /255 unless the model was trained
- * using normalized 0-1 input.
+ * The original model was trained using raw 0-255 pixel values,
+ * so we intentionally DO NOT divide by 255.
  */
 function preprocessImage(imageElement) {
-  return tf.tidy(() => {
-    const image = tf.browser.fromPixels(imageElement);
+  const canvas = document.createElement("canvas");
 
-    const resized = tf.image.resizeBilinear(image, [224, 224]);
+  canvas.width = IMAGE_SIZE;
+  canvas.height = IMAGE_SIZE;
 
-    return resized.toFloat().expandDims(0);
+  const context = canvas.getContext("2d", {
+    willReadFrequently: true,
   });
+
+  if (!context) {
+    throw new Error("Could not create image processing context.");
+  }
+
+  context.drawImage(
+    imageElement,
+    0,
+    0,
+    IMAGE_SIZE,
+    IMAGE_SIZE
+  );
+
+  const imageData = context.getImageData(
+    0,
+    0,
+    IMAGE_SIZE,
+    IMAGE_SIZE
+  );
+
+  const pixels = imageData.data;
+
+  // RGB only — ignore the alpha channel.
+  const inputData = new Float32Array(
+    IMAGE_SIZE * IMAGE_SIZE * 3
+  );
+
+  let offset = 0;
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    inputData[offset++] = pixels[i];     // R
+    inputData[offset++] = pixels[i + 1]; // G
+    inputData[offset++] = pixels[i + 2]; // B
+  }
+
+  return new ort.Tensor(
+    "float32",
+    inputData,
+    [1, IMAGE_SIZE, IMAGE_SIZE, 3]
+  );
 }
 
 /**
- * Convert the model output into a simple Float32Array.
+ * Convert model output into probabilities if necessary.
  */
-async function getPredictionData(output) {
+function softmax(values) {
+  const maxValue = Math.max(...values);
+
+  const exponentials = values.map((value) =>
+    Math.exp(value - maxValue)
+  );
+
+  const sum = exponentials.reduce(
+    (total, value) => total + value,
+    0
+  );
+
+  return exponentials.map((value) => value / sum);
+}
+
+/**
+ * Get the numeric output from ONNX Runtime.
+ */
+function extractOutputData(output) {
   if (!output) {
     throw new Error("Disease model returned no output.");
   }
 
-  /*
-   * Single Tensor output.
-   */
-  if (typeof output.data === "function") {
-    return new Float32Array(await output.data());
+  if (output.data) {
+    return Array.from(output.data);
   }
 
-  /*
-   * Multiple output tensors.
-   */
   if (Array.isArray(output)) {
-    if (!output.length) {
-      throw new Error("Disease model returned an empty output array.");
-    }
-
-    return new Float32Array(await output[0].data());
+    return output.map(Number);
   }
 
-  /*
-   * Named TensorMap output.
-   */
-  if (typeof output === "object") {
-    const firstKey = Object.keys(output)[0];
-
-    if (!firstKey || !output[firstKey]) {
-      throw new Error("Disease model returned an invalid output.");
-    }
-
-    return new Float32Array(await output[firstKey].data());
-  }
-
-  throw new Error("Unsupported disease model output format.");
+  throw new Error("Unsupported ONNX output format.");
 }
 
 /**
- * Run disease classification.
+ * Run disease detection.
  */
 export async function detectDisease(imageElement) {
-  if (!imageElement) {
-    throw new Error("No image was provided for disease analysis.");
-  }
-
-  /*
-   * Automatically load the model if the page forgot to load it first.
-   */
-  if (!model || !labels) {
+  if (!session || !labels) {
     await loadDiseaseModel();
   }
 
-  let input = null;
-  let output = null;
+  if (!imageElement) {
+    throw new Error("No image was provided.");
+  }
 
   try {
-    input = preprocessImage(imageElement);
+    const inputTensor = preprocessImage(imageElement);
 
-    console.log("Disease model input shape:", input.shape);
+    const inputName = session.inputNames[0];
+    const outputName = session.outputNames[0];
 
-    /*
-     * Run TFLite inference.
-     */
-    output = model.predict(input);
+    const results = await session.run({
+      [inputName]: inputTensor,
+    });
 
-    const predictions = await getPredictionData(output);
+    const rawScores = extractOutputData(results[outputName]);
 
-    if (!predictions.length) {
-      throw new Error("Disease model returned no predictions.");
-    }
-
-    console.log(
-      "Disease model predictions:",
-      Array.from(predictions)
-    );
-
-    /*
-     * Find highest probability.
-     */
-    let maxIndex = 0;
-    let maxConfidence = Number(predictions[0]);
-
-    for (let i = 1; i < predictions.length; i++) {
-      const value = Number(predictions[i]);
-
-      if (value > maxConfidence) {
-        maxConfidence = value;
-        maxIndex = i;
-      }
+    if (rawScores.length !== NUM_CLASSES) {
+      console.warn(
+        `Expected ${NUM_CLASSES} output classes but received ${rawScores.length}.`
+      );
     }
 
     /*
-     * Handle invalid model output.
-     */
-    if (!Number.isFinite(maxConfidence)) {
-      throw new Error("Disease model returned an invalid confidence.");
-    }
-
-    /*
-     * Some models return logits instead of probabilities.
+     * The converted model contains a Softmax operation, so normally
+     * these values should already be probabilities.
      *
-     * If values are outside the 0-1 range, convert them to
-     * probabilities using softmax.
+     * If they don't look like probabilities, normalize them with
+     * softmax as a safety fallback.
      */
-    let probabilities = Array.from(predictions);
+    const looksLikeProbabilities =
+      rawScores.every(
+        (value) => value >= 0 && value <= 1
+      ) &&
+      Math.abs(
+        rawScores.reduce((sum, value) => sum + value, 0) - 1
+      ) < 0.01;
 
-    const hasProbabilityRange = probabilities.every(
-      (value) => value >= 0 && value <= 1
-    );
+    const probabilities = looksLikeProbabilities
+      ? rawScores
+      : softmax(rawScores);
 
-    if (!hasProbabilityRange) {
-      const logitsTensor = tf.tensor1d(probabilities);
+    let maxIndex = 0;
+    let maxConfidence = probabilities[0];
 
-      const softmaxTensor = tf.softmax(logitsTensor);
-
-      probabilities = Array.from(await softmaxTensor.data());
-
-      logitsTensor.dispose();
-      softmaxTensor.dispose();
-
-      maxIndex = 0;
-      maxConfidence = probabilities[0];
-
-      for (let i = 1; i < probabilities.length; i++) {
-        if (probabilities[i] > maxConfidence) {
-          maxConfidence = probabilities[i];
-          maxIndex = i;
-        }
+    for (let i = 1; i < probabilities.length; i++) {
+      if (probabilities[i] > maxConfidence) {
+        maxConfidence = probabilities[i];
+        maxIndex = i;
       }
     }
 
@@ -307,66 +252,43 @@ export async function detectDisease(imageElement) {
       (maxConfidence * 100).toFixed(2)
     );
 
-    /*
-     * If confidence is too low, don't pretend we know the disease.
-     */
+    const diseaseName =
+      labels[maxIndex] || `Class ${maxIndex}`;
+
+    console.log("Disease prediction:", {
+      classIndex: maxIndex,
+      diseaseName,
+      confidence: confidencePercent,
+      probabilities,
+    });
+
     if (maxConfidence < CONFIDENCE_THRESHOLD) {
       return {
         diseaseName: "Unknown",
         confidence: confidencePercent,
+        confidencePercent,
         classIndex: maxIndex,
       };
     }
 
-    const diseaseName =
-      labels[maxIndex] ?? `Class ${maxIndex}`;
-
     return {
       diseaseName,
       confidence: confidencePercent,
+      confidencePercent,
       classIndex: maxIndex,
     };
   } catch (error) {
     console.error("Disease detection failed:", error);
 
     throw new Error(
-      error?.message ||
-        "Unable to analyse this leaf image."
+      `Disease detection failed: ${error.message || error}`
     );
-  } finally {
-    /*
-     * Dispose input tensor.
-     */
-    if (input) {
-      input.dispose();
-    }
-
-    /*
-     * Dispose output tensor(s).
-     */
-    if (output) {
-      if (typeof output.dispose === "function") {
-        output.dispose();
-      } else if (Array.isArray(output)) {
-        output.forEach((tensor) => {
-          if (tensor?.dispose) {
-            tensor.dispose();
-          }
-        });
-      } else if (typeof output === "object") {
-        Object.values(output).forEach((tensor) => {
-          if (tensor?.dispose) {
-            tensor.dispose();
-          }
-        });
-      }
-    }
   }
 }
 
 /**
- * Optional helper for debugging from the browser console.
+ * Check whether the model is currently loaded.
  */
 export function isDiseaseModelLoaded() {
-  return Boolean(model && labels);
+  return Boolean(session && labels);
 }

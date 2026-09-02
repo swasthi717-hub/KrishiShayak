@@ -202,7 +202,10 @@ export default function CropScannerPage() {
 
       setResult(detection);
 
+      // Supports the new ONNX response as well as
+      // the previous response field names.
       const diseaseName =
+        detection.diseaseName ||
         detection.disease ||
         detection.label ||
         detection.name ||
@@ -242,19 +245,24 @@ export default function CropScannerPage() {
     }
   }
 
+  // -----------------------------------------------------------
+  // RESULT DATA
+  // -----------------------------------------------------------
+
   const diseaseName =
+    result?.diseaseName ||
     result?.disease ||
     result?.label ||
     result?.name ||
     "";
 
-  const confidence =
-    Number(result?.confidence);
+  const confidence = Number(result?.confidence);
 
-  const confidenceText =
-    Number.isFinite(confidence)
-      ? `${(confidence * 100).toFixed(1)}%`
-      : result?.confidenceText || "--";
+  // ONNX disease service returns confidence already
+  // as a percentage, e.g. 85.42 → "85.4%".
+  const confidenceText = Number.isFinite(confidence)
+    ? `${confidence.toFixed(1)}%`
+    : result?.confidenceText || "--";
 
   const severity =
     result?.severity || "Moderate";
