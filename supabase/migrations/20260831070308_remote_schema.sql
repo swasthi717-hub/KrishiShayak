@@ -59,6 +59,10 @@ BEGIN
   )
   ON CONFLICT (user_id) DO NOTHING;
 
+    INSERT INTO public.notification_preferences (user_id)
+    SELECT id FROM auth.users
+    ON CONFLICT (user_id) DO NOTHING;
+
   RETURN NEW;
 END;
 $$;
