@@ -263,6 +263,8 @@ export default function OnboardingPage() {
     try {
       setLoading(true);
 
+      console.log("AUTH USER:", user);
+      console.log("AUTH USER ID:", user?.id);
       // 1. Create/update farmer profile
       const { error: profileError } = await supabase
         .from("profiles")

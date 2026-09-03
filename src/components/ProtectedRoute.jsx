@@ -8,15 +8,17 @@ const ProtectedRoute = ({ children }) => {
   const location = useLocation();
 
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
-  const [onboardingDone, setOnboardingDone] = useState(null);
+  const [onboardingDone, setOnboardingDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     const checkOnboarding = async () => {
       if (!user) {
-        setCheckingOnboarding(false);
-        setOnboardingDone(null);
+        if (!cancelled) {
+          setCheckingOnboarding(false);
+          setOnboardingDone(false);
+        }
         return;
       }
 
@@ -26,26 +28,24 @@ const ProtectedRoute = ({ children }) => {
         .from("profiles")
         .select("onboarding_completed")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
       if (error) {
-        console.error("ProtectedRoute profile error:", error);
-
+        console.error("Error checking onboarding:", error);
         setOnboardingDone(false);
-        setCheckingOnboarding(false);
-        return;
+      } else {
+        console.log(
+          "Onboarding status:",
+          data?.onboarding_completed
+        );
+
+        setOnboardingDone(
+          data?.onboarding_completed === true
+        );
       }
 
-      console.log(
-        "ProtectedRoute onboarding status:",
-        data?.onboarding_completed
-      );
-
-      setOnboardingDone(data?.onboarding_completed === true);
       setCheckingOnboarding(false);
     };
 
@@ -54,7 +54,7 @@ const ProtectedRoute = ({ children }) => {
     return () => {
       cancelled = true;
     };
-  }, [user, location.pathname]);
+  }, [user]);
 
   if (loading || checkingOnboarding) {
     return <div>Loading...</div>;
@@ -64,14 +64,14 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/" replace />;
   }
 
-  // User has not completed onboarding.
-  // They are allowed to stay on the onboarding page.
+  // User has NOT completed onboarding
+  // → force them to onboarding
   if (!onboardingDone && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // User has completed onboarding.
-  // Don't allow them to return to onboarding.
+  // User HAS completed onboarding
+  // → don't allow them back into onboarding
   if (onboardingDone && location.pathname === "/onboarding") {
     return <Navigate to="/dashboard" replace />;
   }
