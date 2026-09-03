@@ -10,11 +10,7 @@ import {
 
 import Layout from "./Layout.jsx";
 
-<<<<<<< HEAD
 import { getChatResponse } from "./services/gemini.js";
-=======
-import { getChatResponse } from "./services/gemini";
->>>>>>> 033606a (Update dependencies)
 
 import {
   startListening,
