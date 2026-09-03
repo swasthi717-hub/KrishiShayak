@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Bell,
   MapPin,
@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 
 import Layout from "./Layout.jsx";
+
+import { useAuth } from "./context/AuthContext";
 
 const LANGUAGES = [
   { native: "हिंदी", name: "Hindi" },
@@ -50,7 +52,30 @@ const INITIAL_ALERTS = [
 
 export default function ProfilePage() {
   const [alerts, setAlerts] = useState(INITIAL_ALERTS);
-  const [selectedLanguage, setSelectedLanguage] = useState("Hindi");
+  const [selectedLanguage, setSelectedLanguage] = useState("");
+  const { farmerData } = useAuth();
+
+  const profile = farmerData?.profile;
+  const farm = farmerData?.farm;
+  const crops = farmerData?.crops || [];
+
+  useEffect(() => {
+    if (profile?.preferred_language) {
+      const languageMap = {
+        hi: "Hindi",
+        mr: "Marathi",
+        ta: "Tamil",
+        te: "Telugu",
+        en: "English",
+        pa: "Punjabi",
+      };
+
+      setSelectedLanguage(
+        languageMap[profile.preferred_language] ||
+          profile.preferred_language
+      );
+    }
+  }, [profile]);
 
   function toggleAlert(index) {
     setAlerts((current) =>
@@ -86,11 +111,11 @@ export default function ProfilePage() {
               </div>
 
               <h3 className="mt-4 font-serif text-2xl font-bold">
-                Ramesh Patil
+                {profile?.name || "Farmer"}
               </h3>
 
               <p className="mt-1 text-sm text-white/70">
-                Farmer · Maharashtra
+                Farmer · {profile?.state || "Location unavailable"}
               </p>
 
               <div className="my-5 h-px w-full bg-white/20" />
@@ -98,17 +123,23 @@ export default function ProfilePage() {
               {/* Stats */}
               <div className="grid w-full grid-cols-3 gap-3">
                 <div>
-                  <p className="text-lg font-bold">4.2 Acres</p>
+                  <p className="text-lg font-bold">
+                    {farm?.area ?? "--"} {farm?.area_unit || ""}
+                  </p>
                   <p className="text-xs text-white/60">Farm Size</p>
                 </div>
 
                 <div>
-                  <p className="text-lg font-bold">12 Yrs</p>
-                  <p className="text-xs text-white/60">Experience</p>
+                  <div>
+                    <p className="text-lg font-bold">--</p>
+                    <p className="text-xs text-white/60">Experience</p>
+                  </div>
                 </div>
 
                 <div>
-                  <p className="text-lg font-bold">2 Crops</p>
+                  <p className="text-lg font-bold">
+                    {crops.length} {crops.length === 1 ? "Crop" : "Crops"}
+                  </p>
                   <p className="text-xs text-white/60">Active</p>
                 </div>
               </div>
@@ -128,7 +159,8 @@ export default function ProfilePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  Nashik, Maharashtra 422001
+                  {profile?.district || "District unavailable"},{" "}
+                  {profile?.state || "State unavailable"}
                 </p>
               </div>
             </div>
@@ -147,7 +179,18 @@ export default function ProfilePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  Cotton (2.5 ac) · Wheat (1.7 ac)
+                  {crops.length > 0
+                    ? crops
+                        .map(
+                          (crop) =>
+                            `${crop.crop_name}${
+                              crop.acreage
+                                ? ` (${crop.acreage} ${farm?.area_unit || "acre"})`
+                                : ""
+                            }`
+                        )
+                        .join(" · ")
+                    : "No crops added"}
                 </p>
               </div>
             </div>
@@ -185,7 +228,7 @@ export default function ProfilePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  +91 98765 43210
+                  {profile?.phone || "Not provided"}
                 </p>
               </div>
             </div>

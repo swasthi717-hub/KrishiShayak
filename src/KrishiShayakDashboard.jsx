@@ -18,6 +18,8 @@ import {
   Droplets,
 } from "lucide-react";
 
+import { useAuth } from "./context/AuthContext";
+
 const NAV_ITEMS = [
   { label: "Home", icon: Home, path: "/dashboard" },
   { label: "AI Copilot", icon: Mic, path: "/ai-copilot" },
@@ -120,6 +122,11 @@ const STAT_THEMES = {
 
 function Sidebar() {
   const navigate = useNavigate();
+  const { farmerData } = useAuth();
+
+  const profile = farmerData?.profile;
+  const farm = farmerData?.farm;
+  const crops = farmerData?.crops || [];
 
   return (
     <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-[#e5dfd2] bg-white">
@@ -168,20 +175,33 @@ function Sidebar() {
 
       {/* User */}
       <div className="m-3 flex items-center gap-3 rounded-xl bg-[#f4f1e7] p-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
-          RP
-        </div>
-
-        <div className="leading-tight">
-          <p className="text-sm font-semibold text-[#24352a]">
-            Ramesh Patil
-          </p>
-
-          <p className="text-xs text-slate-500">
-            Nashik · Cotton, Wheat
-          </p>
-        </div>
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
+        {profile?.name
+          ? profile.name
+              .split(" ")
+              .map((word) => word[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()
+          : "F"}
       </div>
+
+      <div className="leading-tight min-w-0">
+        <p className="truncate text-sm font-semibold text-[#24352a]">
+          {profile?.name || "Farmer"}
+        </p>
+
+        <p className="truncate text-xs text-slate-500">
+          {farm?.district || farm?.state || "Location unavailable"}
+          {crops.length > 0 && (
+            <>
+              {" · "}
+              {crops.map((crop) => crop.crop_name).join(", ")}
+            </>
+          )}
+        </p>
+      </div>
+    </div>
     </aside>
   );
 }
@@ -220,7 +240,7 @@ function TopBar() {
   );
 }
 
-function HeroBanner() {
+function HeroBanner({ profile }) {
   const navigate = useNavigate();
 
   const FARM_HERO_URL =
@@ -245,7 +265,7 @@ function HeroBanner() {
             </p>
 
             <h2 className="mt-4 font-serif text-2xl font-bold sm:text-3xl">
-              नमस्ते, रमेश जी!
+              नमस्ते, {profile?.name ? `${profile.name.split(" ")[0]} जी!` : "किसान जी!"}
             </h2>
 
             <p className="mt-5 text-sm font-semibold text-white">
@@ -413,6 +433,15 @@ function StatCard({
 
 export default function KrishiShayakDashboard() {
   const navigate = useNavigate();
+
+  const { farmerData } = useAuth();
+
+  const profile = farmerData?.profile;
+
+  console.log("Farmer data:", farmerData);
+  console.log("Crops:", farmerData?.crops);
+  console.log("Farm:", farmerData?.farm);
+  console.log("Profile:", farmerData?.profile);
   return (
     <div className="flex h-screen w-full bg-[#faf7ef] font-sans text-[#24352a]">
       <Sidebar />
@@ -422,7 +451,7 @@ export default function KrishiShayakDashboard() {
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="mx-auto max-w-5xl space-y-6">
-            <HeroBanner />
+            <HeroBanner profile={profile} />
 
             {/* Alerts */}
             <div>
@@ -465,3 +494,4 @@ export default function KrishiShayakDashboard() {
     </div>
   );
 }
+
