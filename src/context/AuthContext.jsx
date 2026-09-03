@@ -1,4 +1,9 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { supabase } from "../lib/supabase";
 
 const AuthContext = createContext(null);
@@ -6,10 +11,36 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchProfile = async (userId) => {
+    if (!userId) {
+      setProfile(null);
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching profile:", error);
+      return null;
+    }
+
+    setProfile(data);
+    return data;
+  };
+
+  const refreshProfile = async () => {
+    if (!user) return null;
+    return await fetchProfile(user.id);
+  };
+
   useEffect(() => {
-    // Get the current session when the app starts
     const getInitialSession = async () => {
       const {
         data: { session },
@@ -17,18 +48,28 @@ export const AuthProvider = ({ children }) => {
 
       setSession(session);
       setUser(session?.user ?? null);
+
+      if (session?.user) {
+        await fetchProfile(session.user.id);
+      }
+
       setLoading(false);
     };
 
     getInitialSession();
 
-    // Listen for login/logout/session changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+
+        if (session?.user) {
+          await fetchProfile(session.user.id);
+        } else {
+          setProfile(null);
+        }
       }
     );
 
@@ -42,7 +83,9 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         session,
+        profile,
         loading,
+        refreshProfile,
       }}
     >
       {children}
