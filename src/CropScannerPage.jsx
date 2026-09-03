@@ -273,6 +273,21 @@ export default function CropScannerPage() {
         AI Crop Health Scanner
       </h2>
 
+      {/* =======================================================
+          DISCLAIMER
+      ======================================================= */}
+
+      <div className="mt-3 rounded-xl border border-[#e5dfd2] bg-[#f7f5ee] px-4 py-3 text-xs leading-5 text-slate-500">
+        <span className="font-semibold text-[#59645c]">
+          Disclaimer:
+        </span>{" "}
+        AI-generated disease assessments and recommendations are
+        for informational purposes only. Please do not rely on
+        them blindly; consult a qualified agricultural expert or
+        relevant professional before taking major treatment or
+        crop-management decisions.
+      </div>
+
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
 
         {/* LEFT */}

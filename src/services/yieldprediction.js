@@ -7,12 +7,32 @@ let mappings = null;
 let loadingPromise = null;
 
 // =============================================================
+// MODEL FILES
+// =============================================================
+
+const MODEL_PATH = "/models/yield_model_farmer.onnx";
+const MAPPINGS_PATH = "/models/mappings_farmer.json";
+
+// 1 acre = 0.404686 hectares
+const ACRES_TO_HECTARES = 0.404686;
+
+// =============================================================
+// ALIASES
+// =============================================================
+
+const cropAliases = {
+  Cotton: "Cotton(lint)",
+  "Moong (Green Gram)": "Moong(Green Gram)",
+  "Rapeseed & Mustard": "Rapeseed &Mustard",
+};
+
+// =============================================================
 // LOAD MODEL
 // =============================================================
 
 export async function loadYieldModel() {
   if (session && mappings) {
-    return;
+    return session;
   }
 
   if (loadingPromise) {
@@ -21,54 +41,49 @@ export async function loadYieldModel() {
 
   loadingPromise = (async () => {
     try {
+      console.log("Loading farmer yield ONNX model...");
+
       const [loadedSession, mappingsResponse] =
         await Promise.all([
-          ort.InferenceSession.create(
-            "/models/yield_model.onnx",
-            {
-              executionProviders: ["wasm"],
-            }
-          ),
-          fetch("/models/mappings.json"),
+          ort.InferenceSession.create(MODEL_PATH, {
+            executionProviders: ["wasm"],
+          }),
+          fetch(MAPPINGS_PATH),
         ]);
 
       if (!mappingsResponse.ok) {
         throw new Error(
-          `Unable to load mappings.json (${mappingsResponse.status})`
+          `Unable to load mappings_farmer.json (${mappingsResponse.status})`
         );
       }
 
-      const loadedMappings =
-        await mappingsResponse.json();
+      const loadedMappings = await mappingsResponse.json();
 
       if (!loadedMappings?.crop_mapping) {
         throw new Error(
-          "mappings.json is missing crop_mapping"
+          "mappings_farmer.json is missing crop_mapping"
         );
       }
 
       if (!loadedMappings?.season_mapping) {
         throw new Error(
-          "mappings.json is missing season_mapping"
+          "mappings_farmer.json is missing season_mapping"
         );
       }
 
       if (!loadedMappings?.state_mapping) {
         throw new Error(
-          "mappings.json is missing state_mapping"
+          "mappings_farmer.json is missing state_mapping"
         );
       }
 
       session = loadedSession;
       mappings = loadedMappings;
 
-      console.log("Yield model loaded successfully");
+      console.log("Farmer yield model loaded successfully");
       console.log("Input names:", session.inputNames);
       console.log("Output names:", session.outputNames);
-      console.log(
-        "Input metadata:",
-        session.inputMetadata
-      );
+      console.log("Input metadata:", session.inputMetadata);
 
       return session;
     } catch (error) {
@@ -76,11 +91,15 @@ export async function loadYieldModel() {
       mappings = null;
 
       console.error(
-        "Failed to load yield model:",
+        "Failed to load farmer yield model:",
         error
       );
 
-      throw error;
+      throw new Error(
+        `Failed to load yield model: ${
+          error.message || error
+        }`
+      );
     } finally {
       loadingPromise = null;
     }
@@ -90,7 +109,7 @@ export async function loadYieldModel() {
 }
 
 // =============================================================
-// PREDICT
+// PREDICT YIELD
 // =============================================================
 
 export async function predictYield({
@@ -99,38 +118,49 @@ export async function predictYield({
   state,
   area,
   rainfall,
-  fertilizer,
-  pesticide,
 }) {
   if (!session || !mappings) {
-    throw new Error(
-      "Yield model is not loaded. Call loadYieldModel() first."
-    );
+    await loadYieldModel();
   }
 
-  const numericArea = Number(area);
-  const numericRainfall = Number(rainfall);
-  const numericFertilizer = Number(fertilizer);
-  const numericPesticide = Number(pesticide);
+  // -----------------------------------------------------------
+  // Convert UI inputs
+  // -----------------------------------------------------------
 
-  if (!Number.isFinite(numericArea)) {
+  const numericAreaAcres = Number(area);
+  const numericRainfall = Number(rainfall);
+
+  if (
+    !Number.isFinite(numericAreaAcres) ||
+    numericAreaAcres <= 0
+  ) {
     throw new Error("Invalid farm area");
   }
 
-  if (!Number.isFinite(numericRainfall)) {
+  if (
+    !Number.isFinite(numericRainfall) ||
+    numericRainfall < 0
+  ) {
     throw new Error("Invalid rainfall");
   }
 
-  if (!Number.isFinite(numericFertilizer)) {
-    throw new Error("Invalid fertilizer value");
-  }
+  // -----------------------------------------------------------
+  // Convert acres -> hectares
+  //
+  // The model was trained using Area in hectares.
+  // -----------------------------------------------------------
 
-  if (!Number.isFinite(numericPesticide)) {
-    throw new Error("Invalid pesticide value");
-  }
+  const numericAreaHectares =
+    numericAreaAcres * ACRES_TO_HECTARES;
+
+  // -----------------------------------------------------------
+  // Map categorical values
+  // -----------------------------------------------------------
+
+  const cropKey = cropAliases[crop] || crop;
 
   const cropEncoded =
-    Number(mappings.crop_mapping?.[crop]);
+    Number(mappings.crop_mapping?.[cropKey]);
 
   const seasonEncoded =
     Number(mappings.season_mapping?.[season]);
@@ -138,39 +168,93 @@ export async function predictYield({
   const stateEncoded =
     Number(mappings.state_mapping?.[state]);
 
+  // -----------------------------------------------------------
+  // Debug information
+  // -----------------------------------------------------------
+
+  console.log("Farmer yield prediction inputs:", {
+    crop,
+    season,
+    state,
+    areaAcres: numericAreaAcres,
+    areaHectares: numericAreaHectares,
+    rainfall: numericRainfall,
+  });
+
+  console.log("Mapped values:", {
+    crop: {
+      original: crop,
+      mapped: cropKey,
+      encoded: cropEncoded,
+    },
+    season: {
+      original: season,
+      encoded: seasonEncoded,
+    },
+    state: {
+      original: state,
+      encoded: stateEncoded,
+    },
+  });
+
+  // -----------------------------------------------------------
+  // Validate mappings
+  // -----------------------------------------------------------
+
   if (!Number.isFinite(cropEncoded)) {
     throw new Error(
-      `Crop "${crop}" is not present in mappings.json`
+      `Crop "${crop}" is not present in mappings_farmer.json`
     );
   }
 
   if (!Number.isFinite(seasonEncoded)) {
     throw new Error(
-      `Season "${season}" is not present in mappings.json`
+      `Season "${season}" is not present in mappings_farmer.json`
     );
   }
 
   if (!Number.isFinite(stateEncoded)) {
     throw new Error(
-      `State "${state}" is not present in mappings.json`
+      `State "${state}" is not present in mappings_farmer.json`
     );
   }
+
+  // -----------------------------------------------------------
+  // Create ONNX input
+  //
+  // The model expects exactly 5 features:
+  //
+  // [Crop_encoded,
+  //  Season_encoded,
+  //  State_encoded,
+  //  Area,
+  //  Annual_Rainfall]
+  //
+  // Area MUST be hectares.
+  // -----------------------------------------------------------
 
   const inputArray = new Float32Array([
     cropEncoded,
     seasonEncoded,
     stateEncoded,
-    numericArea,
+    numericAreaHectares,
     numericRainfall,
-    numericFertilizer,
-    numericPesticide,
   ]);
+
+  console.log(
+    "Farmer ONNX input array:",
+    Array.from(inputArray)
+  );
 
   const inputTensor = new ort.Tensor(
     "float32",
     inputArray,
-    [1, 7]
+    [1, 5]
   );
+
+  // -----------------------------------------------------------
+  // Get model input/output names
+  // -----------------------------------------------------------
 
   const inputName = session.inputNames[0];
   const outputName = session.outputNames[0];
@@ -181,11 +265,13 @@ export async function predictYield({
     );
   }
 
-  const feeds = {
-    [inputName]: inputTensor,
-  };
+  // -----------------------------------------------------------
+  // Run model
+  // -----------------------------------------------------------
 
-  const results = await session.run(feeds);
+  const results = await session.run({
+    [inputName]: inputTensor,
+  });
 
   const output = results[outputName];
 
@@ -195,15 +281,37 @@ export async function predictYield({
     );
   }
 
-  const value = Number(output.data[0]);
+  // -----------------------------------------------------------
+  // Convert log1p prediction back to original scale
+  // -----------------------------------------------------------
 
-  if (!Number.isFinite(value)) {
+  const predictionLog = Number(output.data[0]);
+
+  if (!Number.isFinite(predictionLog)) {
     throw new Error(
       "Yield model returned an invalid prediction"
     );
   }
 
-  return value;
+  const predictedYield = Math.expm1(predictionLog);
+
+  if (
+    !Number.isFinite(predictedYield) ||
+    predictedYield < 0
+  ) {
+    throw new Error(
+      "Yield model produced an invalid final prediction"
+    );
+  }
+
+  console.log("Raw ONNX output:", predictionLog);
+
+  console.log(
+    "Final predicted yield:",
+    predictedYield
+  );
+
+  return predictedYield;
 }
 
 // =============================================================
@@ -238,18 +346,27 @@ export function estimateProfit(
   }
 
   /*
-   * IMPORTANT:
+   * Keep this calculation unchanged for now.
    *
-   * This assumes the ONNX model output is TOTAL farm yield.
-   *
-   * If your training target was yield per acre, change revenue to:
-   *
-   * const revenue = yieldValue * area * price;
+   * The exact unit of Yield_farmer still needs to be confirmed
+   * before using it with a quintal market price.
    */
+
   const revenue = yieldValue * price;
+
   const totalCost = cost * area;
 
   const profit = revenue - totalCost;
+
+  console.log("Profit calculation:", {
+    predictedYield: yieldValue,
+    marketPricePerQuintal: price,
+    areaInAcres: area,
+    costPerAcre: cost,
+    revenue,
+    totalCost,
+    profit,
+  });
 
   if (!Number.isFinite(profit)) {
     throw new Error(

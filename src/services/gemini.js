@@ -41,8 +41,39 @@ async function callGemini(prompt) {
 
     if (error) {
       console.error("Gemini Edge Function error:", error);
+
+      // Try to read the actual response returned by the Edge Function
+      if (error.context) {
+        try {
+          const errorBody = await error.context.json();
+
+          console.error(
+            "Gemini Edge Function response body:",
+            errorBody
+          );
+
+          throw new Error(
+            errorBody?.error ||
+              errorBody?.message ||
+              error.message ||
+              "Unable to connect to Gemini"
+          );
+        } catch (responseError) {
+          // If the response body could not be parsed,
+          // fall back to Supabase's error message.
+          if (
+            responseError instanceof Error &&
+            responseError.message &&
+            responseError.message !== error.message
+          ) {
+            throw responseError;
+          }
+        }
+      }
+
       throw new Error(
-        error.message || "Unable to connect to Gemini"
+        error.message ||
+          "Unable to connect to Gemini"
       );
     }
 
@@ -51,17 +82,32 @@ async function callGemini(prompt) {
     }
 
     if (data.error) {
+      console.error(
+        "Gemini returned an application error:",
+        data.error
+      );
+
       throw new Error(data.error);
     }
 
     if (!data.text || typeof data.text !== "string") {
-      console.error("Invalid Gemini response:", data);
-      throw new Error("Gemini returned an empty response");
+      console.error(
+        "Invalid Gemini response:",
+        data
+      );
+
+      throw new Error(
+        "Gemini returned an empty response"
+      );
     }
 
     return data.text.trim();
   } catch (error) {
-    console.error("CALL GEMINI FAILED:", error);
+    console.error(
+      "CALL GEMINI FAILED:",
+      error
+    );
+
     throw error;
   }
 }
@@ -86,7 +132,7 @@ export async function getDiseaseExplanation(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a friendly farming assistant helping Indian farmers.
+You are KrishiSahayak, a friendly farming assistant helping Indian farmers.
 
 Respond ONLY in ${language}.
 
@@ -129,13 +175,18 @@ export async function getChatResponse(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a friendly farming assistant helping Indian farmers.
+You are KrishiSahayak, a friendly AI farming assistant helping Indian farmers.
 
-The farmer's preferred language is ${language}.
+TARGET RESPONSE LANGUAGE:
+${language}
 
-IMPORTANT LANGUAGE RULE:
-Respond ONLY in ${language}.
-Do not switch to English unless the farmer explicitly asks for English.
+STRICT LANGUAGE RULE:
+- Your entire response MUST be written in ${language}.
+- Do NOT answer in English if the target language is not English.
+- Do NOT translate the farmer's question into another language.
+- Do NOT mix languages unless the farmer specifically asks for a bilingual answer.
+- If the farmer asks the question in a different language, still answer in ${language}.
+- If the target language is English, answer completely in English.
 
 The farmer may ask about:
 - Crops
@@ -157,13 +208,14 @@ Keep answers:
 - Easy to understand
 - Suitable for a farmer without technical knowledge
 
-Important:
+Important safety rules:
 - Do not invent weather information.
 - Do not invent market prices.
 - Do not invent disease diagnoses.
 - Do not invent pesticide dosages.
-- If a chemical treatment is discussed, tell the farmer to follow the product label and consult a local agricultural officer.
+- If chemical treatment is discussed, tell the farmer to follow the product label and consult a local agricultural officer.
 - If you do not have enough information, say so instead of making up facts.
+- Do not claim predictions are guaranteed.
 
 If the question is not related to farming, politely explain that KrishiShayak is mainly designed for farming-related questions.
 
@@ -173,7 +225,6 @@ ${question}
 
   return callGemini(prompt);
 }
-
 // =============================================================
 // ACTION PLAN
 // =============================================================
@@ -220,7 +271,7 @@ export async function getActionPlan(
     : "";
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers plan their day.
+You are KrishiSahayak, a farming assistant helping Indian farmers plan their day.
 
 Respond ONLY in ${language}.
 
@@ -347,7 +398,7 @@ Calculated trend: ${trend}
     .join("\n");
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers decide when to sell crops.
+You are KrishiSahayak, a farming assistant helping Indian farmers decide when to sell crops.
 
 Respond ONLY in ${language}.
 
@@ -413,7 +464,7 @@ export async function getYieldExplanation(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers understand a yield prediction.
+You are KrishiSahayak, a farming assistant helping Indian farmers understand a yield prediction.
 
 Respond ONLY in ${language}.
 

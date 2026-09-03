@@ -1,0 +1,15 @@
+{
+  "features": [
+    "Crop_encoded",
+    "Season_encoded",
+    "State_encoded",
+    "Area",
+    "Annual_Rainfall"
+  ],
+  "target": "Yield_farmer",
+  "target_formula": "Production / Area",
+  "target_transformation": "log1p",
+  "removed_crops": [
+    "Coconut"
+  ]
+}
