@@ -263,22 +263,29 @@ export default function OnboardingPage() {
     try {
       setLoading(true);
 
-      // 1. Update farmer profile
+      // 1. Create/update farmer profile
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({
-          name: name.trim(),
-          preferred_language: language,
-          state: state.trim() || null,
-          district: district.trim() || null,
-        })
-        .eq("user_id", user.id);
+        .upsert(
+          {
+            user_id: user.id,
+            name: name.trim(),
+            preferred_language: language,
+            state: state.trim() || null,
+            district: district.trim() || null,
+          },
+          {
+            onConflict: "user_id",
+          }
+        );
 
       if (profileError) {
         throw profileError;
       }
-
       // 2. Create farm
+      console.log("Current user:", user);
+      console.log("Current user ID:", user?.id);
+
       const { data: farm, error: farmError } = await supabase
         .from("farms")
         .insert({
@@ -393,27 +400,126 @@ export default function OnboardingPage() {
     setLoading(true);
 
     try {
-      const { error: onboardingError } = await supabase
+      if (!user) {
+        throw new Error("You must be logged in.");
+      }
+
+      const { data, error } = await supabase
         .from("profiles")
         .update({
           onboarding_completed: true,
         })
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .select()
+        .single();
 
-      if (onboardingError) {
-        throw onboardingError;
+      if (error) {
+        throw error;
       }
 
-      navigate("/dashboard");
+      if (!data) {
+        throw new Error("Could not find your profile.");
+      }
+
+      console.log("Profile after skipping location:", data);
+
+      if (data.onboarding_completed !== true) {
+        throw new Error("Onboarding status was not saved.");
+      }
+
+      navigate("/dashboard", { replace: true });
 
     } catch (err) {
-      console.error(err);
+      console.error("Skip location error:", err);
       setError(err.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }
   };
 
+
+  if (locationStep) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#f8f3e7",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 20,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 520,
+            background: "#fffdf8",
+            borderRadius: 20,
+            padding: 32,
+            boxShadow: "0 15px 50px rgba(0,0,0,.08)",
+          }}
+        >
+          <h1 style={{ color: "#0c3d2b" }}>
+            Allow location access
+          </h1>
+
+          <p style={{ color: "#647067", marginBottom: 24 }}>
+            Allow location access so we can provide information
+            relevant to your farm.
+          </p>
+
+          {error && (
+            <div
+              style={{
+                background: "#fff0ee",
+                color: "#b42318",
+                padding: 10,
+                borderRadius: 8,
+                marginBottom: 12,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleGetLocation}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 14,
+              border: 0,
+              borderRadius: 10,
+              background: loading ? "#8aa99a" : "#145a3f",
+              color: "white",
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Getting location..." : "Allow Location"}
+          </button>
+
+          <button
+            onClick={handleSkipLocation}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 14,
+              border: 0,
+              background: "transparent",
+              color: "#145a3f",
+              fontWeight: 600,
+              marginTop: 10,
+              cursor: "pointer",
+            }}
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       style={{
