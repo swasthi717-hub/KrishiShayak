@@ -21,6 +21,13 @@ import { getDiseaseExplanation } from "./services/gemini.js";
 
 import { supabase } from "./lib/supabase";
 
+// FIX: this was the missing link between the offline sync engine and any
+// actual form. queueTableWrite already existed and worked, but nothing
+// called it — the save function below used to insert directly into
+// Supabase, which meant zero offline support and it also targeted a
+// table (`disease_predictions`) that isn't in any migration.
+import { queueTableWrite } from "./sync/queueAction";
+
 const TIPS = [
   "Take photo in natural daylight",
   "Focus on the affected leaf clearly",
@@ -34,6 +41,13 @@ const SEVERITY_THEME = {
   Moderate: "bg-orange-100 text-orange-700",
   Severe: "bg-red-100 text-red-700",
 };
+
+// disease_reports.notes stores a string like "Detected: X (87.5% confidence)"
+// — this pulls the number back out for display purposes only.
+function parseConfidenceFromNotes(notes) {
+  const match = /\(([\d.]+)% confidence\)/.exec(notes || "");
+  return match ? Number(match[1]) : null;
+}
 
 export default function CropScannerPage() {
   const fileInputRef = useRef(null);
@@ -82,6 +96,10 @@ export default function CropScannerPage() {
    * ---------------------------------------------------------
    * LOAD FARM + CROP + RECENT SCANS
    * ---------------------------------------------------------
+   * NOTE: the farms/crops lookup below still points at tables that
+   * aren't in any migration file. Left untouched here since that's a
+   * separate schema question (worth raising with your team — see the
+   * chat), but flagging so it isn't mistaken for "fixed."
    */
 
   useEffect(() => {
@@ -105,28 +123,29 @@ export default function CropScannerPage() {
 
         if (farmError) throw farmError;
 
-        if (!farm) return;
+        if (farm) {
+          setFarmId(farm.id);
 
-        setFarmId(farm.id);
+          const { data: cropData, error: cropError } = await supabase
+            .from("crops")
+            .select("name")
+            .eq("farm_id", farm.id)
+            .limit(1)
+            .maybeSingle();
 
-        const { data: cropData, error: cropError } = await supabase
-          .from("crops")
-          .select("name")
-          .eq("farm_id", farm.id)
-          .limit(1)
-          .maybeSingle();
+          if (cropError) throw cropError;
 
-        if (cropError) throw cropError;
-
-        if (cropData) {
-          setSelectedCrop(cropData.name);
+          if (cropData) {
+            setSelectedCrop(cropData.name);
+          }
         }
 
+        // FIX: was querying `disease_predictions` (undocumented table).
+        // Now reads from `disease_reports`, the table that's actually
+        // migrated (supabase/migrations/20260831181330_offline_sync_support.sql).
         const { data: scans, error: scansError } = await supabase
-          .from("disease_predictions")
-          .select(
-            "id, crop, disease_name, confidence, model_version, created_at"
-          )
+          .from("disease_reports")
+          .select("id, crop_name, notes, created_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(5);
@@ -241,6 +260,16 @@ export default function CropScannerPage() {
    * ---------------------------------------------------------
    * SAVE DISEASE RESULT
    * ---------------------------------------------------------
+   * FIX: previously a direct supabase.from("disease_predictions").insert(...)
+   * call — meant zero offline support (would just fail with no network)
+   * and wrote into a table with no migration behind it.
+   *
+   * Now: goes through queueTableWrite(), which writes to IndexedDB
+   * first (instant, works with zero connectivity) and lets syncManager
+   * push it to Supabase's `disease_reports` table whenever connectivity
+   * is available. The UI updates optimistically using the same data,
+   * since we won't get a server response back immediately when offline.
+   * ---------------------------------------------------------
    */
 
   async function savePrediction() {
@@ -265,26 +294,41 @@ export default function CropScannerPage() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("disease_predictions")
-        .insert({
+      const notes = `Detected: ${disease} (${confidence}% confidence)`;
+      const cropName = selectedCrop || disease;
+
+      const recordId = await queueTableWrite({
+        table: "disease_reports",
+        operation: "insert",
+        payload: {
           user_id: user.id,
-          farm_id: farmId,
-          crop: selectedCrop || null,
-          disease_name: disease,
-          confidence,
-          model_version: "disease-v1",
-        })
-        .select()
-        .single();
+          crop_name: cropName,
+          notes,
+        },
+      });
 
-      if (error) throw error;
+      // Optimistic UI update — queueTableWrite doesn't return the saved
+      // server row (there may not be one yet if we're offline), so we
+      // build the same shape locally using the id it generated.
+      setRecentScans((prev) =>
+        [
+          {
+            id: recordId,
+            crop_name: cropName,
+            notes,
+            created_at: new Date().toISOString(),
+          },
+          ...prev,
+        ].slice(0, 5)
+      );
 
-      setRecentScans((prev) => [data, ...prev].slice(0, 5));
-
-      setMessage("Disease scan saved successfully.");
+      setMessage(
+        navigator.onLine
+          ? "Disease scan saved — syncing now."
+          : "Saved offline — will sync automatically once you're back online."
+      );
     } catch (error) {
-      console.error("Failed to save disease prediction:", error);
+      console.error("Failed to save disease report:", error);
       setMessage("Unable to save disease scan.");
     } finally {
       setSaving(false);
@@ -502,41 +546,47 @@ export default function CropScannerPage() {
                   No saved scans yet.
                 </p>
               ) : (
-                recentScans.map((scan) => (
-                  <div
-                    key={scan.id}
-                    className="flex items-center justify-between rounded-xl px-2 py-2.5 hover:bg-[#f7f5ee]"
-                  >
-                    <div className="flex items-center gap-3">
+                recentScans.map((scan) => {
+                  const scanConfidence = parseConfidenceFromNotes(scan.notes);
 
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f4f1e7] text-[#1f5b3d]">
-                        <Leaf size={16} />
-                      </div>
-
-                      <div>
-                        <p className="text-sm font-semibold text-[#24352a]">
-                          {scan.crop || "Crop"} — {scan.disease_name}
-                        </p>
-
-                        <p className="text-xs text-slate-500">
-                          {new Date(scan.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        Number(scan.confidence) >= 80
-                          ? SEVERITY_THEME.Mild
-                          : Number(scan.confidence) >= 60
-                          ? SEVERITY_THEME.Moderate
-                          : SEVERITY_THEME.Severe
-                      }`}
+                  return (
+                    <div
+                      key={scan.id}
+                      className="flex items-center justify-between rounded-xl px-2 py-2.5 hover:bg-[#f7f5ee]"
                     >
-                      {scan.confidence}%
-                    </span>
-                  </div>
-                ))
+                      <div className="flex items-center gap-3">
+
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f4f1e7] text-[#1f5b3d]">
+                          <Leaf size={16} />
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-semibold text-[#24352a]">
+                            {scan.crop_name || "Crop"}
+                          </p>
+
+                          <p className="text-xs text-slate-500">
+                            {new Date(scan.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      {scanConfidence !== null && (
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            scanConfidence >= 80
+                              ? SEVERITY_THEME.Mild
+                              : scanConfidence >= 60
+                              ? SEVERITY_THEME.Moderate
+                              : SEVERITY_THEME.Severe
+                          }`}
+                        >
+                          {scanConfidence}%
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
