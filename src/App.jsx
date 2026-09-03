@@ -3,7 +3,10 @@ import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { requestAndSaveFCMToken } from "./firebase";
+import {
+  requestAndSaveFCMToken,
+  listenForForegroundMessages
+} from "./firebase";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import ResetPassword from "./ResetPassword";
@@ -29,6 +32,16 @@ function FCMRegistration() {
     if (!user?.id) return;
 
     requestAndSaveFCMToken(user.id);
+    const unsubscribe = listenForForegroundMessages((title, body) => {
+      new Notification(title || "KrishiSahayak Alert", {
+        body: body || "You have a new agricultural alert.",
+        icon: "/favicon.ico",
+      });
+    });
+    return () => {
+      // Firebase's onMessage listener should be unsubscribed here
+      if (unsubscribe) unsubscribe();
+    };
   }, [user?.id]);
 
   return null;
