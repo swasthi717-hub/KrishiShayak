@@ -627,6 +627,8 @@ export default function KrishiSahayakLanding() {
   const handleSubmit = (mode) => {
     setAuthOpen(false);
 
+    // Let ProtectedRoute decide whether the user
+    // should go to onboarding or dashboard.
     if (mode === "signup") {
       navigate("/onboarding");
     } else {
