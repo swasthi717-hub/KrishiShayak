@@ -12,11 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
     "@tailwindcss/vite": "^4.3.3",
-<<<<<<< HEAD
-    "@tensorflow/tfjs": "^4.22.0",
-=======
     "@tensorflow/tfjs": "^3.20.0",
->>>>>>> 033606a (Update dependencies)
     "@tensorflow/tfjs-tflite": "^0.0.1-alpha.9",
     "dexie": "^4.4.5",
     "dexie-react-hooks": "^4.4.0",
