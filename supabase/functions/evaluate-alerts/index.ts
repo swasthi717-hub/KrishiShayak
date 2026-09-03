@@ -1,8 +1,9 @@
 // supabase/functions/evaluate-alerts/index.ts
 //
-// This is the piece that was completely missing: nothing in the repo
-// evaluated alert_rules, turned a rule breach into a `notifications` row,
-// or actually sent the FCM push. This function does all three.
+// Evaluates alert_rules against weather/mandi data, inserts deduped
+// notifications, and sends the push via FCM's modern HTTP v1 API
+// (OAuth2 service-account auth) instead of the deprecated legacy
+// server-key API.
 //
 // IMPORTANT: fetchWeatherData() and fetchMandiData() below are stubs —
 // your weather/mandi APIs haven't been found/wired yet, so they return
@@ -18,11 +19,19 @@
 //   npx supabase functions deploy evaluate-alerts
 //
 // Required secrets (set via `npx supabase secrets set KEY=value`):
-//   FCM_SERVER_KEY        — Firebase Cloud Messaging legacy server key
-//                            (Firebase Console → Project Settings → Cloud
-//                            Messaging → Server key)
-//   SUPABASE_URL           — auto-provided by Supabase Edge Functions
+//   FIREBASE_PROJECT_ID    — from your Firebase service account JSON ("project_id")
+//   FIREBASE_CLIENT_EMAIL  — from the same JSON ("client_email")
+//   FIREBASE_PRIVATE_KEY   — from the same JSON ("private_key") — paste the
+//                            FULL value including -----BEGIN/END PRIVATE KEY-----.
+//                            If your shell mangles the newlines, it's fine to
+//                            store it with literal "\n" sequences — this code
+//                            converts them back to real newlines below.
+//   SUPABASE_URL              — auto-provided by Supabase Edge Functions
 //   SUPABASE_SERVICE_ROLE_KEY — auto-provided by Supabase Edge Functions
+//
+// Get the service account JSON from:
+//   Firebase Console → Project Settings → Service Accounts →
+//   "Generate new private key"
 //
 // Trigger this on a schedule (e.g. every 30 min) using Supabase's
 // pg_cron + pg_net, or an external scheduler hitting this function's URL.
@@ -34,13 +43,84 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-const FCM_SERVER_KEY = Deno.env.get("FCM_SERVER_KEY")!;
+const FIREBASE_PROJECT_ID = Deno.env.get("FIREBASE_PROJECT_ID")!;
+const FIREBASE_CLIENT_EMAIL = Deno.env.get("FIREBASE_CLIENT_EMAIL")!;
+const FIREBASE_PRIVATE_KEY = Deno.env.get("FIREBASE_PRIVATE_KEY")!.replace(/\\n/g, "\n");
+
+// ------------------------------------------------------------------
+// OAuth2 service-account auth for FCM HTTP v1.
+// Builds + signs a JWT, exchanges it for a short-lived access token.
+// Cached in-memory for the life of the function instance so we don't
+// re-authenticate on every single push send within one invocation.
+// ------------------------------------------------------------------
+let cachedToken: { value: string; expiresAt: number } | null = null;
+
+function base64url(input: ArrayBuffer | string): string {
+  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : new Uint8Array(input);
+  let str = btoa(String.fromCharCode(...bytes));
+  return str.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  const pemBody = pem
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\s/g, "");
+  const binaryDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+
+  return crypto.subtle.importKey(
+    "pkcs8",
+    binaryDer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+}
+
+async function getAccessToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
+    return cachedToken.value;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claims = {
+    iss: FIREBASE_CLIENT_EMAIL,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const unsigned = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claims))}`;
+  const key = await importPrivateKey(FIREBASE_PRIVATE_KEY);
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(unsigned)
+  );
+  const jwt = `${unsigned}.${base64url(signature)}`;
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to get FCM access token: ${await res.text()}`);
+  }
+
+  const json = await res.json();
+  cachedToken = { value: json.access_token, expiresAt: Date.now() + json.expires_in * 1000 };
+  return cachedToken.value;
+}
 
 // ------------------------------------------------------------------
 // STUBS — replace these once the weather/mandi APIs are available.
-// Return shape: { [metric]: numericValue } for the given rule's context.
-// Metric names must match what's stored in alert_rules.metric, e.g.
-// 'rainfall_mm', 'temperature_c', 'price_per_quintal'.
 // ------------------------------------------------------------------
 async function fetchWeatherData(_userId: string): Promise<Record<string, number> | null> {
   // TODO: call the real weather API once available, e.g.
@@ -86,25 +166,31 @@ async function sendPushToUser(userId: string, title: string, body: string) {
 
   if (error || !tokens || tokens.length === 0) return;
 
+  const accessToken = await getAccessToken();
+
   await Promise.all(
-    tokens.map((t) =>
-      fetch("https://fcm.googleapis.com/fcm/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `key=${FCM_SERVER_KEY}`,
-        },
-        body: JSON.stringify({
-          to: t.fcm_token,
-          notification: { title, body },
-        }),
-      }).catch((err) => console.error("FCM send failed for token:", err))
+    tokens.map((t : any) =>
+      fetch(
+        `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            message: {
+              token: t.fcm_token,
+              notification: { title, body },
+            },
+          }),
+        }
+      ).catch((err) => console.error("FCM send failed for token:", err))
     )
   );
 }
 
 Deno.serve(async () => {
-  // 1. Load all active alert rules.
   const { data: rules, error: rulesError } = await supabase
     .from("alert_rules")
     .select("*")
@@ -120,19 +206,17 @@ Deno.serve(async () => {
   for (const rule of rules ?? []) {
     evaluated++;
 
-    // 2. Get the relevant live data for this rule's category.
     const data =
       rule.category === "weather" ? await fetchWeatherData(rule.user_id)
       : rule.category === "market" ? await fetchMandiData(rule.user_id)
-      : null; // pest_disease / yield_risk sources can be added the same way later
+      : null;
 
-    if (!data || data[rule.metric] === undefined) continue; // no data source yet — skip silently
+    if (!data || data[rule.metric] === undefined) continue;
 
     const value = data[rule.metric];
     const isTriggered = evaluateCondition(value, rule.operator, rule.threshold);
     if (!isTriggered) continue;
 
-    // 3. Respect the user's notification preferences.
     const prefKey = preferenceKeyForCategory(rule.category);
     if (prefKey) {
       const { data: prefs } = await supabase
@@ -141,12 +225,9 @@ Deno.serve(async () => {
         .eq("user_id", rule.user_id)
         .maybeSingle();
 
-      if (prefs && prefs[prefKey] === false) continue; // user opted out of this category
+      if (prefs && prefs[prefKey] === false) continue;
     }
 
-    // 4. Insert the notification — dedupe_key + UNIQUE(user_id, dedupe_key)
-    //    means re-running this function repeatedly (e.g. every 30 min)
-    //    won't spam the same alert; it'll just no-op on conflict.
     const dedupeKey = `${rule.id}:${rule.metric}:${new Date().toISOString().slice(0, 10)}`;
     const title = `${rule.category === "weather" ? "Weather" : "Market"} Alert`;
     const body = `${rule.metric.replace(/_/g, " ")} is ${value} (rule: ${rule.operator} ${rule.threshold})${rule.crop_name ? ` for ${rule.crop_name}` : ""}.`;
@@ -172,8 +253,6 @@ Deno.serve(async () => {
       continue;
     }
 
-    // Only push if this was actually a new row (ignoreDuplicates means a
-    // duplicate returns no row back).
     if (inserted && inserted.length > 0) {
       triggered++;
       await sendPushToUser(rule.user_id, title, body);
