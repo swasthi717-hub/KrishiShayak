@@ -1,7 +1,9 @@
-import React from "react";
+
+import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { requestAndSaveFCMToken } from "./firebase";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import ResetPassword from "./ResetPassword";
@@ -15,109 +17,130 @@ import FarmDashboard from "./FarmDashboard.jsx";
 import SmartAlertsPage from "./SmartAlertsPage.jsx";
 import ProfilePage from "./ProfilePage.jsx";
 
+
+/*
+ * Registers the current user's device for Firebase
+ * push notifications.
+ */
+function FCMRegistration() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    requestAndSaveFCMToken(user.id);
+  }, [user?.id]);
+
+  return null;
+}
+
+
 export default function App() {
   return (
     <BrowserRouter>
-    <AuthProvider>
-      <Routes>
+      <AuthProvider>
 
-        {/* Landing Page */}
-        <Route
-          path="/"
-          element={<LandingPage />}
-        />
+        {/* Register device for FCM notifications after login */}
+        <FCMRegistration />
 
-        {/* Home / Main Dashboard */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <KrishiShayakDashboard />
-            </ProtectedRoute>
-          }
-        />
+        <Routes>
 
-        {/* AI Copilot */}
-        <Route
-          path="/ai-copilot"
-          element={
-            <ProtectedRoute>
-              <AiCopilotPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Landing Page */}
+          <Route
+            path="/"
+            element={<LandingPage />}
+          />
 
-        {/* Weather */}
-        <Route
-          path="/weather"
-          element={
-            <ProtectedRoute>
-              <WeatherPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Home / Main Dashboard */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <KrishiShayakDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Crop Scanner */}
-        <Route
-          path="/crop-scanner"
-          element={
-            <ProtectedRoute>
-              <CropScannerPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* AI Copilot */}
+          <Route
+            path="/ai-copilot"
+            element={
+              <ProtectedRoute>
+                <AiCopilotPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Mandi Market */}
-        <Route
-          path="/mandi-market"
-          element={
-            <ProtectedRoute>
-              <MandiMarketPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Weather */}
+          <Route
+            path="/weather"
+            element={
+              <ProtectedRoute>
+                <WeatherPage />
+              </ProtectedRoute>
+            }
+          />
 
+          {/* Crop Scanner */}
+          <Route
+            path="/crop-scanner"
+            element={
+              <ProtectedRoute>
+                <CropScannerPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Farm Dashboard */}
-        <Route
-          path="/farm-dashboard"
-          element={
-            <ProtectedRoute>
-              <FarmDashboard />
-            </ProtectedRoute>
-          }
-        />
+          {/* Mandi Market */}
+          <Route
+            path="/mandi-market"
+            element={
+              <ProtectedRoute>
+                <MandiMarketPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Smart Alerts */}
-        <Route
-          path="/alerts"
-          element={
-            <ProtectedRoute>
-              <SmartAlertsPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Farm Dashboard */}
+          <Route
+            path="/farm-dashboard"
+            element={
+              <ProtectedRoute>
+                <FarmDashboard />
+              </ProtectedRoute>
+            }
+          />
 
+          {/* Smart Alerts */}
+          <Route
+            path="/alerts"
+            element={
+              <ProtectedRoute>
+                <SmartAlertsPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Profile */}
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Profile */}
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
 
-        
-        {/*Reset Password*/}
-        <Route 
-        path="/reset-password" 
-        element={<ResetPassword />} 
-        />
+          {/* Reset Password */}
+          <Route
+            path="/reset-password"
+            element={<ResetPassword />}
+          />
 
-      </Routes>
+        </Routes>
+
       </AuthProvider>
     </BrowserRouter>
   );
-};
+}
+
