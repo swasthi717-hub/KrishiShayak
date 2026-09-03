@@ -6,24 +6,54 @@ import { supabase } from "../lib/supabase";
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
-  const [onboardingDone, setOnboardingDone] = useState(null);
+  const [onboardingDone, setOnboardingDone] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      setCheckingOnboarding(false);
-      return;
-    }
+    let cancelled = false;
 
-    supabase
-      .from("profiles")
-      .select("onboarding_completed")
-      .eq("user_id", user.id)
-      .single()
-      .then(({ data }) => {
-        setOnboardingDone(data?.onboarding_completed ?? false);
-        setCheckingOnboarding(false);
-      });
+    const checkOnboarding = async () => {
+      if (!user) {
+        if (!cancelled) {
+          setCheckingOnboarding(false);
+          setOnboardingDone(false);
+        }
+        return;
+      }
+
+      setCheckingOnboarding(true);
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("onboarding_completed")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Error checking onboarding:", error);
+        setOnboardingDone(false);
+      } else {
+        console.log(
+          "Onboarding status:",
+          data?.onboarding_completed
+        );
+
+        setOnboardingDone(
+          data?.onboarding_completed === true
+        );
+      }
+
+      setCheckingOnboarding(false);
+    };
+
+    checkOnboarding();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   if (loading || checkingOnboarding) {
@@ -34,12 +64,14 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/" replace />;
   }
 
-  // Force incomplete users to onboarding (unless they're already there)
+  // User has NOT completed onboarding
+  // → force them to onboarding
   if (!onboardingDone && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // Don't let completed users go back to onboarding
+  // User HAS completed onboarding
+  // → don't allow them back into onboarding
   if (onboardingDone && location.pathname === "/onboarding") {
     return <Navigate to="/dashboard" replace />;
   }

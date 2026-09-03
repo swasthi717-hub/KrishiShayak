@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./context/AuthContext";
+import { getCurrentLocation } from "./services/location";
 
 const languages = [
   { code: "hi", name: "हिन्दी", english: "Hindi" },
@@ -230,6 +231,8 @@ export default function OnboardingPage() {
   const [district, setDistrict] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [locationStep, setLocationStep] = useState(false);
+  const [farmId, setFarmId] = useState(null);
 
   const t = translations[language] || translations.en;
 
@@ -258,68 +261,69 @@ export default function OnboardingPage() {
     }
 
     try {
-        setLoading(true);
+      setLoading(true);
 
-        // 1. Update farmer profile
-        const { error: profileError } = await supabase
-            .from("profiles")
-            .update({
+      console.log("AUTH USER:", user);
+      console.log("AUTH USER ID:", user?.id);
+      // 1. Create/update farmer profile
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            user_id: user.id,
             name: name.trim(),
             preferred_language: language,
             state: state.trim() || null,
             district: district.trim() || null,
-            })
-            .eq("user_id", user.id);
+          },
+          {
+            onConflict: "user_id",
+          }
+        );
 
-        if (profileError) {
-            throw profileError;
-        }
+      if (profileError) {
+        throw profileError;
+      }
+      // 2. Create farm
+      console.log("Current user:", user);
+      console.log("Current user ID:", user?.id);
 
-        // 2. Create farm
-        const { data: farm, error: farmError } = await supabase
-            .from("farms")
-            .insert({
-            user_id: user.id,
-            farm_name: `${name.trim()}'s Farm`,
-            area: Number(area),
-            area_unit: areaUnit,
-            state: state.trim() || null,
-            district: district.trim() || null,
-            })
-            .select()
-            .single();
-
-        if (farmError) {
-            throw farmError;
-        }
-
-        // 3. Create main crop
-        const { error: cropError } = await supabase
-            .from("crops")
-            .insert({
-            farm_id: farm.id,
-            crop_name: crop.trim(),
-            acreage: areaUnit === "acre" ? Number(area) : null,
-            });
-
-        if (cropError) {
-            throw cropError;
-        }
-
-        // 4. Mark onboarding as completed
-        const { error: onboardingError } = await supabase
-        .from("profiles")
-        .update({
-            onboarding_completed: true,
+      const { data: farm, error: farmError } = await supabase
+        .from("farms")
+        .insert({
+          user_id: user.id,
+          farm_name: `${name.trim()}'s Farm`,
+          area: Number(area),
+          area_unit: areaUnit,
+          state: state.trim() || null,
+          district: district.trim() || null,
         })
-        .eq("user_id", user.id);
+        .select()
+        .single();
 
-        if (onboardingError) {
-        throw onboardingError;
-        }
+      if (farmError) {
+        throw farmError;
+      }
 
-        //5. go to dashboard
-        navigate("/dashboard");
+      // 3. Create main crop
+      const { error: cropError } = await supabase
+        .from("crops")
+        .insert({
+          farm_id: farm.id,
+          crop_name: crop.trim(),
+          acreage: areaUnit === "acre" ? Number(area) : null,
+        });
+
+      if (cropError) {
+        throw cropError;
+      }
+
+      // 4. Save the newly created farm ID
+      setFarmId(farm.id);
+
+      // 5. Move to location permission step
+      setLocationStep(true);
+
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong.");
@@ -328,6 +332,196 @@ export default function OnboardingPage() {
     }
   };
 
+
+  //Location permission
+  const handleGetLocation = async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      const location = await getCurrentLocation();
+
+      console.log("Farmer GPS location:", location);
+
+      // Update the farm with GPS information
+      const { error: locationError } = await supabase
+        .from("farms")
+        .update({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          location_accuracy_meters: location.accuracy,
+          location_source: "gps",
+          location_updated_at: new Date().toISOString(),
+        })
+        .eq("id", farmId);
+
+      if (locationError) {
+        throw locationError;
+      }
+
+      // Mark onboarding as completed
+      const { error: onboardingError } = await supabase
+        .from("profiles")
+        .update({
+          onboarding_completed: true,
+        })
+        .eq("user_id", user.id);
+
+      if (onboardingError) {
+        throw onboardingError;
+      }
+
+      // Go to dashboard
+      navigate("/dashboard");
+
+    } catch (err) {
+      console.error("Location error:", err);
+
+      let message = "Unable to get your location.";
+
+      if (err.code === 1) {
+        message =
+          "Location permission was denied. You can allow it from your browser settings.";
+      } else if (err.code === 2) {
+        message =
+          "Your location could not be determined. Please try again.";
+      } else if (err.code === 3) {
+        message =
+          "Location request timed out. Please try again.";
+      }
+
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  //Location permission skip
+  const handleSkipLocation = async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      if (!user) {
+        throw new Error("You must be logged in.");
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({
+          onboarding_completed: true,
+        })
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error("Could not find your profile.");
+      }
+
+      console.log("Profile after skipping location:", data);
+
+      if (data.onboarding_completed !== true) {
+        throw new Error("Onboarding status was not saved.");
+      }
+
+      navigate("/dashboard", { replace: true });
+
+    } catch (err) {
+      console.error("Skip location error:", err);
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  if (locationStep) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#f8f3e7",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 20,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 520,
+            background: "#fffdf8",
+            borderRadius: 20,
+            padding: 32,
+            boxShadow: "0 15px 50px rgba(0,0,0,.08)",
+          }}
+        >
+          <h1 style={{ color: "#0c3d2b" }}>
+            Allow location access
+          </h1>
+
+          <p style={{ color: "#647067", marginBottom: 24 }}>
+            Allow location access so we can provide information
+            relevant to your farm.
+          </p>
+
+          {error && (
+            <div
+              style={{
+                background: "#fff0ee",
+                color: "#b42318",
+                padding: 10,
+                borderRadius: 8,
+                marginBottom: 12,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleGetLocation}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 14,
+              border: 0,
+              borderRadius: 10,
+              background: loading ? "#8aa99a" : "#145a3f",
+              color: "white",
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Getting location..." : "Allow Location"}
+          </button>
+
+          <button
+            onClick={handleSkipLocation}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 14,
+              border: 0,
+              background: "transparent",
+              color: "#145a3f",
+              fontWeight: 600,
+              marginTop: 10,
+              cursor: "pointer",
+            }}
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       style={{

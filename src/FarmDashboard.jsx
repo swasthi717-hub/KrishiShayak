@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   Wheat,
@@ -10,6 +10,8 @@ import {
   Mic,
 } from "lucide-react";
 
+import { useNavigate } from "react-router-dom";
+
 import Layout from "./Layout.jsx";
 
 import {
@@ -17,11 +19,22 @@ import {
   predictYield,
   estimateProfit,
   getYieldFactors,
-} from "./services/yieldPrediction";
+} from "./services/yieldprediction.js";
 
-import { getYieldExplanation } from "./services/gemini";
+const FARM = {
+  name: "Ramesh Farm",
+  crop: "Cotton",
+  season: "Kharif",
+  state: "Maharashtra",
+  area: 4.2,
+  pesticide: 50,
+  marketPricePerQuintal: 1900,
+  costPerAcre: 15000,
+};
 
 export default function FarmDashboardPage() {
+  const navigate = useNavigate();
+
   // =========================================================
   // WHAT-IF INPUTS
   // =========================================================
@@ -35,26 +48,30 @@ export default function FarmDashboardPage() {
 
   const [modelReady, setModelReady] = useState(false);
   const [modelLoading, setModelLoading] = useState(true);
+  const [predictionLoading, setPredictionLoading] =
+    useState(false);
   const [modelError, setModelError] = useState("");
 
-  const [predictedYield, setPredictedYield] = useState(null);
-  const [predictedProfit, setPredictedProfit] = useState(null);
+  const [predictedYield, setPredictedYield] =
+    useState(null);
 
-  const [yieldFactors, setYieldFactors] = useState(null);
+  const [predictedProfit, setPredictedProfit] =
+    useState(null);
+
+  const [yieldFactors, setYieldFactors] =
+    useState(null);
+
+  // Used to prevent an older async prediction from
+  // overwriting a newer slider prediction.
+  const predictionRequestId = useRef(0);
 
   // =========================================================
-  // GEMINI STATE
-  // =========================================================
-
-  const [aiExplanation, setAiExplanation] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
-
-  // =========================================================
-  // LOAD ONNX MODEL
+  // LOAD MODEL
   // =========================================================
 
   useEffect(() => {
+    let cancelled = false;
+
     async function initializeModel() {
       try {
         setModelLoading(true);
@@ -62,172 +79,231 @@ export default function FarmDashboardPage() {
 
         await loadYieldModel();
 
+        if (cancelled) return;
+
         setModelReady(true);
 
-        // Optional: load feature importance data
         try {
           const factors = await getYieldFactors();
-          setYieldFactors(factors);
+
+          if (!cancelled) {
+            setYieldFactors(factors);
+          }
         } catch (error) {
-          console.warn("Could not load yield factors:", error);
+          console.warn(
+            "Could not load yield factors:",
+            error
+          );
         }
       } catch (error) {
-        console.error("Failed to load yield model:", error);
-        setModelError(
-          "Unable to load the yield prediction model."
+        console.error(
+          "Failed to load yield model:",
+          error
         );
+
+        if (!cancelled) {
+          setModelError(
+            error?.message ||
+              "Unable to load the yield prediction model."
+          );
+        }
       } finally {
-        setModelLoading(false);
+        if (!cancelled) {
+          setModelLoading(false);
+        }
       }
     }
 
     initializeModel();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // =========================================================
-  // RUN YIELD PREDICTION
+  // RUN PREDICTION
   // =========================================================
 
   useEffect(() => {
-    if (!modelReady) return;
+    if (!modelReady) {
+      return;
+    }
+
+    const requestId =
+      ++predictionRequestId.current;
+
+    let cancelled = false;
 
     async function runPrediction() {
+      setPredictionLoading(true);
+      setModelError("");
+
       try {
-        /*
-          IMPORTANT:
-
-          These values must match the crop/season/state
-          used by your actual model.
-
-          Replace these demo values with the farmer's
-          actual farm data once that is connected.
-        */
-
         const result = await predictYield({
-          crop: "Cotton",
-          season: "Kharif",
-          state: "Maharashtra",
-
-          area: 4.2,
-
-          rainfall: rainfall,
-
-          fertilizer: fertilizer,
-
-          pesticide: 50,
+          crop: FARM.crop,
+          season: FARM.season,
+          state: FARM.state,
+          area: FARM.area,
+          rainfall,
+          fertilizer,
+          pesticide: FARM.pesticide,
         });
 
         const numericYield = Number(result);
 
-        setPredictedYield(numericYield);
-
-        /*
-          Demo market price.
-
-          Replace this with your actual mandi price
-          when the market data is connected.
-        */
+        if (!Number.isFinite(numericYield)) {
+          throw new Error(
+            "Yield model returned an invalid number."
+          );
+        }
 
         const profit = estimateProfit(
           numericYield,
-          1900,
-          4.2,
-          15000
+          FARM.marketPricePerQuintal,
+          FARM.area,
+          FARM.costPerAcre
         );
 
-        setPredictedProfit(profit);
+        if (
+          cancelled ||
+          requestId !== predictionRequestId.current
+        ) {
+          return;
+        }
 
-        // Clear previous AI response because inputs changed
-        setAiExplanation("");
-        setAiError("");
+        setPredictedYield(numericYield);
+        setPredictedProfit(profit);
       } catch (error) {
-        console.error("Yield prediction failed:", error);
+        console.error(
+          "Yield prediction failed:",
+          error
+        );
+
+        if (
+          cancelled ||
+          requestId !== predictionRequestId.current
+        ) {
+          return;
+        }
 
         setPredictedYield(null);
         setPredictedProfit(null);
+
+        setModelError(
+          error?.message ||
+            "Unable to calculate the yield prediction."
+        );
+      } finally {
+        if (
+          !cancelled &&
+          requestId === predictionRequestId.current
+        ) {
+          setPredictionLoading(false);
+        }
       }
     }
 
     runPrediction();
+
+    return () => {
+      cancelled = true;
+    };
   }, [modelReady, rainfall, fertilizer]);
 
   // =========================================================
-  // ASK GEMINI FOR OPTIMIZATION
+  // ASK AI → OPEN COPILOT
   // =========================================================
 
-  async function handleAskAI() {
+  function handleAskAI() {
     if (
-      predictedYield === null ||
-      predictedProfit === null
+      !Number.isFinite(Number(predictedYield)) ||
+      !Number.isFinite(Number(predictedProfit))
     ) {
       return;
     }
 
-    try {
-      setAiLoading(true);
-      setAiError("");
-      setAiExplanation("");
+    const prompt = `
+Help me optimize my current farm simulation.
 
-      const explanation = await getYieldExplanation(
-        predictedYield,
-        predictedProfit,
-        {
-          rainfall,
-          fertilizer,
-        }
-      );
+Farm:
+${FARM.name}
 
-      setAiExplanation(explanation);
-    } catch (error) {
-      console.error("Gemini error:", error);
+Crop:
+${FARM.crop}
 
-      setAiError(
-        "AI advice is currently unavailable. Please check your internet connection."
-      );
-    } finally {
-      setAiLoading(false);
-    }
+Area:
+${FARM.area} acres
+
+State:
+${FARM.state}
+
+Current simulator inputs:
+- Rainfall: ${rainfall} mm
+- Fertilizer: ${fertilizer}%
+
+Current model output:
+- Estimated yield: ${Number(predictedYield).toFixed(2)} quintals
+- Expected profit: ₹${Math.round(
+      predictedProfit
+    ).toLocaleString("en-IN")}
+
+Please explain:
+1. What the current result means.
+2. Whether the current rainfall and fertilizer settings look reasonable.
+3. What practical changes the farmer could consider.
+4. Any important caution.
+
+Do not invent weather, market prices, pesticide dosages, or guaranteed outcomes.
+Keep the advice simple and practical for an Indian farmer.
+`;
+
+    navigate("/ai-copilot", {
+      state: {
+        prompt,
+      },
+    });
   }
 
   // =========================================================
-  // DISPLAY VALUES
+  // DISPLAY
   // =========================================================
 
   const displayedYield =
-    predictedYield !== null
-      ? `${Number(predictedYield).toFixed(1)} Q`
-      : modelLoading
-        ? "Loading..."
-        : "--";
+    predictionLoading
+      ? "Calculating..."
+      : Number.isFinite(Number(predictedYield))
+        ? `${Number(predictedYield).toFixed(1)} Q`
+        : modelLoading
+          ? "Loading..."
+          : "--";
 
   const displayedProfit =
-    predictedProfit !== null
-      ? `₹${Math.round(predictedProfit).toLocaleString("en-IN")}`
-      : "--";
+    predictionLoading
+      ? "Calculating..."
+      : Number.isFinite(Number(predictedProfit))
+        ? `₹${Math.round(
+            predictedProfit
+          ).toLocaleString("en-IN")}`
+        : "--";
 
   return (
     <Layout title="Farm Dashboard">
       <div className="space-y-6">
 
-        {/* =====================================================
-            PAGE HEADER
-        ====================================================== */}
+        {/* HEADER */}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
           <h2 className="font-serif text-2xl font-bold text-[#24352a]">
             Farm Analytics Dashboard
           </h2>
 
           <div className="rounded-full bg-white px-4 py-2 text-sm text-slate-500 shadow-sm ring-1 ring-[#e5dfd2]">
-            Ramesh Farm · 4.2 Acres · Nashik
+            {FARM.name} · {FARM.area} Acres · Nashik
           </div>
-
         </div>
 
-        {/* =====================================================
-            MODEL ERROR
-        ====================================================== */}
+        {/* MODEL ERROR */}
 
         {modelError && (
           <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
@@ -235,16 +311,13 @@ export default function FarmDashboardPage() {
           </div>
         )}
 
-        {/* =====================================================
-            TOP STAT CARDS
-        ====================================================== */}
+        {/* TOP CARDS */}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-          {/* Estimated Yield */}
+          {/* Yield */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e5f0df] text-[#2f7357]">
               <Wheat size={24} />
             </div>
@@ -260,13 +333,11 @@ export default function FarmDashboardPage() {
             <p className="mt-1 text-sm text-slate-500">
               AI prediction
             </p>
-
           </div>
 
-          {/* Expected Profit */}
+          {/* Profit */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-50 text-green-600">
               <TrendingUp size={24} />
             </div>
@@ -282,13 +353,11 @@ export default function FarmDashboardPage() {
             <p className="mt-1 text-sm text-slate-500">
               Based on current inputs
             </p>
-
           </div>
 
-          {/* Farm Health */}
+          {/* Health */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
               <Activity size={24} />
             </div>
@@ -304,13 +373,11 @@ export default function FarmDashboardPage() {
             <p className="mt-1 text-sm text-slate-500">
               Good condition
             </p>
-
           </div>
 
-          {/* Yield Risk */}
+          {/* Risk */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
               <AlertTriangle size={24} />
             </div>
@@ -326,21 +393,14 @@ export default function FarmDashboardPage() {
             <p className="mt-1 text-sm text-slate-500">
               No major threats
             </p>
-
           </div>
-
         </div>
 
-        {/* =====================================================
-            YIELD HISTORY + FACTORS
-        ====================================================== */}
+        {/* HISTORY + FACTORS */}
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.7fr_0.8fr]">
 
-          {/* YIELD HISTORY */}
-
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
               Yield History (Quintals)
             </h3>
@@ -360,51 +420,11 @@ export default function FarmDashboardPage() {
                 className="absolute left-7 top-0 h-[210px] w-[calc(100%-28px)]"
                 preserveAspectRatio="none"
               >
-
-                <line
-                  x1="0"
-                  y1="10"
-                  x2="700"
-                  y2="10"
-                  stroke="#eeeae2"
-                  strokeWidth="1"
-                />
-
-                <line
-                  x1="0"
-                  y1="57"
-                  x2="700"
-                  y2="57"
-                  stroke="#eeeae2"
-                  strokeWidth="1"
-                />
-
-                <line
-                  x1="0"
-                  y1="105"
-                  x2="700"
-                  y2="105"
-                  stroke="#eeeae2"
-                  strokeWidth="1"
-                />
-
-                <line
-                  x1="0"
-                  y1="152"
-                  x2="700"
-                  y2="152"
-                  stroke="#eeeae2"
-                  strokeWidth="1"
-                />
-
-                <line
-                  x1="0"
-                  y1="200"
-                  x2="700"
-                  y2="200"
-                  stroke="#eeeae2"
-                  strokeWidth="1"
-                />
+                <line x1="0" y1="10" x2="700" y2="10" stroke="#eeeae2" />
+                <line x1="0" y1="57" x2="700" y2="57" stroke="#eeeae2" />
+                <line x1="0" y1="105" x2="700" y2="105" stroke="#eeeae2" />
+                <line x1="0" y1="152" x2="700" y2="152" stroke="#eeeae2" />
+                <line x1="0" y1="200" x2="700" y2="200" stroke="#eeeae2" />
 
                 <path
                   d="
@@ -442,7 +462,6 @@ export default function FarmDashboardPage() {
                 <circle cx="455" cy="65" r="4" fill="#2f7357" />
                 <circle cx="580" cy="92" r="4" fill="#2f7357" />
                 <circle cx="685" cy="40" r="4" fill="#2f7357" />
-
               </svg>
 
               <div className="absolute bottom-1 left-7 right-0 flex justify-between text-xs text-slate-500">
@@ -453,15 +472,10 @@ export default function FarmDashboardPage() {
                 <span>Dec</span>
                 <span>Jan</span>
               </div>
-
             </div>
-
           </div>
 
-          {/* KEY YIELD FACTORS */}
-
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
               Key Yield Factors
             </h3>
@@ -482,32 +496,28 @@ export default function FarmDashboardPage() {
 
               <Factor
                 label="Pest Control"
-                value={80}
+                value={FARM.pesticide}
                 color="bg-[#2f7357]"
               />
 
               <Factor
                 label="Weather Impact"
-                value={Math.max(0, Math.min(100, 100 - rainfall))}
+                value={Math.max(
+                  0,
+                  Math.min(100, 100 - rainfall)
+                )}
                 color="bg-orange-500"
               />
 
             </div>
-
           </div>
-
         </div>
 
-        {/* =====================================================
-            WHAT-IF SIMULATOR
-        ====================================================== */}
+        {/* WHAT IF */}
 
         <div className="rounded-3xl bg-[#d9f4dc] p-6">
 
-          {/* Heading */}
-
           <div className="flex flex-wrap items-center gap-2">
-
             <span className="text-[#2f7357]">
               <Activity size={21} />
             </span>
@@ -519,14 +529,11 @@ export default function FarmDashboardPage() {
             <span className="rounded-full bg-[#2f7357] px-3 py-1 text-xs font-bold text-white">
               Predictive AI
             </span>
-
           </div>
-
-          {/* Simulator */}
 
           <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_1fr_1.25fr]">
 
-            {/* Rainfall */}
+            {/* RAINFALL */}
 
             <SliderControl
               icon={<CloudRain size={18} />}
@@ -536,7 +543,7 @@ export default function FarmDashboardPage() {
               unit="mm"
             />
 
-            {/* Fertilizer */}
+            {/* FERTILIZER */}
 
             <SliderControl
               icon={<Sprout size={18} />}
@@ -555,7 +562,6 @@ export default function FarmDashboardPage() {
               </p>
 
               <div className="mt-5">
-
                 <p className="font-serif text-3xl font-bold text-[#2f7357]">
                   {displayedYield}
                 </p>
@@ -563,13 +569,11 @@ export default function FarmDashboardPage() {
                 <p className="text-sm text-slate-500">
                   Estimated Yield
                 </p>
-
               </div>
 
               <div className="my-4 border-t border-[#e5dfd2]" />
 
               <div>
-
                 <p className="text-2xl font-bold text-green-600">
                   {displayedProfit}
                 </p>
@@ -577,110 +581,80 @@ export default function FarmDashboardPage() {
                 <p className="text-sm text-slate-500">
                   Expected Profit
                 </p>
-
               </div>
-
-              {/* ASK GEMINI */}
 
               <button
                 type="button"
                 onClick={handleAskAI}
                 disabled={
-                  aiLoading ||
+                  predictionLoading ||
                   modelLoading ||
-                  predictedYield === null
+                  !Number.isFinite(
+                    Number(predictedYield)
+                  ) ||
+                  !Number.isFinite(
+                    Number(predictedProfit)
+                  )
                 }
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-[#2f7357] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#245d46] disabled:cursor-not-allowed disabled:opacity-60"
               >
-
                 <Mic size={17} />
-
-                {aiLoading
-                  ? "Thinking..."
-                  : "Ask AI to Optimize"}
-
+                Ask AI to Optimize
               </button>
 
-              {/* GEMINI ERROR */}
-
-              {aiError && (
-                <div className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-700">
-                  {aiError}
-                </div>
-              )}
-
-              {/* GEMINI RESPONSE */}
-
-              {aiExplanation && (
-                <div className="mt-4 rounded-xl bg-[#f4f8ef] p-4">
-
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#2f7357]">
-                    AI Recommendation
-                  </p>
-
-                  <p className="mt-2 text-sm leading-6 text-[#3d4d40]">
-                    {aiExplanation}
-                  </p>
-
-                </div>
-              )}
-
+              <p className="mt-2 text-center text-xs text-slate-400">
+                Opens AI Copilot with your current simulation
+              </p>
             </div>
-
           </div>
-
         </div>
-
       </div>
     </Layout>
   );
 }
 
-/* =========================================================
-   FACTOR COMPONENT
-========================================================= */
+// =============================================================
+// FACTOR
+// =============================================================
 
 function Factor({
   label,
   value,
   color,
 }) {
+  const numericValue = Number(value);
+
+  const safeValue = Number.isFinite(numericValue)
+    ? Math.max(0, Math.min(100, numericValue))
+    : 0;
+
   return (
     <div>
-
       <div className="flex items-center justify-between">
-
         <p className="text-sm font-medium text-[#24352a]">
           {label}
         </p>
 
         <p className="text-sm font-bold text-[#24352a]">
-          {Math.round(value)}%
+          {Math.round(safeValue)}%
         </p>
-
       </div>
 
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e9e5dc]">
-
         <div
           className={`h-full rounded-full ${color}`}
           style={{
-            width: `${Math.max(
-              0,
-              Math.min(100, value)
-            )}%`,
+            width: `${safeValue}%`,
           }}
         />
-
       </div>
-
     </div>
   );
 }
 
-/* =========================================================
-   SLIDER COMPONENT
-========================================================= */
+// =============================================================
+// SLIDER
+// =============================================================
 
 function SliderControl({
   icon,
@@ -691,11 +665,8 @@ function SliderControl({
 }) {
   return (
     <div>
-
       <div className="flex items-center justify-between">
-
         <div className="flex items-center gap-2">
-
           <span className="text-[#2f7357]">
             {icon}
           </span>
@@ -703,14 +674,12 @@ function SliderControl({
           <p className="text-sm font-bold text-[#24352a]">
             {label}
           </p>
-
         </div>
 
         <p className="text-sm font-bold text-[#2f7357]">
           {value}
           {unit}
         </p>
-
       </div>
 
       <input
@@ -725,7 +694,6 @@ function SliderControl({
       />
 
       <div className="flex justify-between text-xs text-slate-500">
-
         <span>
           0{unit}
         </span>
@@ -733,9 +701,7 @@ function SliderControl({
         <span>
           100{unit}
         </span>
-
       </div>
-
     </div>
   );
 }
