@@ -29,15 +29,14 @@ const FARM = {
   area: 4.2,
   pesticide: 50,
 
-  // Temporary demo price until Mandi API is connected.
+  // Temporary demo value until Mandi API is connected.
   marketPricePerQuintal: 1900,
 
   // Temporary demo cultivation cost.
   costPerAcre: 7000,
 };
 
-// Model output is tonnes/hectare.
-// Profit calculation needs total quintals for the selected farm area.
+// ONNX model output is tonnes/hectare.
 const ACRES_TO_HECTARES = 0.404686;
 const TONNES_TO_QUINTALS = 10;
 
@@ -70,7 +69,7 @@ export default function FarmDashboardPage() {
   const [yieldFactors, setYieldFactors] =
     useState(null);
 
-  // Stores information shown in the expandable Model Details section.
+  // Model details shown below the simulator.
   const [predictionDebug, setPredictionDebug] =
     useState(null);
 
@@ -170,13 +169,13 @@ export default function FarmDashboardPage() {
         }
 
         // =====================================================
-        // CONVERT MODEL OUTPUT
+        // MODEL OUTPUT CONVERSION
         //
-        // ONNX model output:
-        // tonnes / hectare
+        // Model output = tonnes/hectare
         //
-        // First convert acres -> hectares.
-        // Then convert tonnes -> quintals.
+        // Acres -> hectares
+        // tonnes/hectare -> total tonnes
+        // total tonnes -> quintals
         // =====================================================
 
         const areaHectares =
@@ -192,6 +191,7 @@ export default function FarmDashboardPage() {
         //
         // Revenue = total quintals × market price
         // Cost = cost per acre × farm area
+        // Profit = revenue − total cost
         // =====================================================
 
         const profit = estimateProfit(
@@ -348,7 +348,7 @@ Keep the advice simple and practical for an Indian farmer.
   }
 
   // =========================================================
-  // DISPLAY VALUES
+  // DISPLAY
   // =========================================================
 
   const displayedYield =
@@ -383,6 +383,7 @@ Keep the advice simple and practical for an Indian farmer.
         =================================================== */}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
           <h2 className="font-serif text-2xl font-bold text-[#24352a]">
             Farm Analytics Dashboard
           </h2>
@@ -390,6 +391,7 @@ Keep the advice simple and practical for an Indian farmer.
           <div className="rounded-full bg-white px-4 py-2 text-sm text-slate-500 shadow-sm ring-1 ring-[#e5dfd2]">
             {FARM.name} · {farmArea.toFixed(1)} Acres · Nashik
           </div>
+
         </div>
 
         {/* ===================================================
@@ -411,6 +413,7 @@ Keep the advice simple and practical for an Indian farmer.
           {/* YIELD */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e5f0df] text-[#2f7357]">
               <Wheat size={24} />
             </div>
@@ -426,11 +429,13 @@ Keep the advice simple and practical for an Indian farmer.
             <p className="mt-1 text-sm text-slate-500">
               Total farm production
             </p>
+
           </div>
 
           {/* PROFIT */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-50 text-green-600">
               <TrendingUp size={24} />
             </div>
@@ -446,11 +451,13 @@ Keep the advice simple and practical for an Indian farmer.
             <p className="mt-1 text-sm text-slate-500">
               Based on current inputs
             </p>
+
           </div>
 
           {/* HEALTH */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
               <Activity size={24} />
             </div>
@@ -466,11 +473,13 @@ Keep the advice simple and practical for an Indian farmer.
             <p className="mt-1 text-sm text-slate-500">
               Good condition
             </p>
+
           </div>
 
           {/* RISK */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
               <AlertTriangle size={24} />
             </div>
@@ -486,7 +495,9 @@ Keep the advice simple and practical for an Indian farmer.
             <p className="mt-1 text-sm text-slate-500">
               No major threats
             </p>
+
           </div>
+
         </div>
 
         {/* ===================================================
@@ -498,6 +509,7 @@ Keep the advice simple and practical for an Indian farmer.
           {/* HISTORY */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
               Yield History (Quintals)
             </h3>
@@ -517,6 +529,7 @@ Keep the advice simple and practical for an Indian farmer.
                 className="absolute left-7 top-0 h-[210px] w-[calc(100%-28px)]"
                 preserveAspectRatio="none"
               >
+
                 <line
                   x1="0"
                   y1="10"
@@ -628,6 +641,7 @@ Keep the advice simple and practical for an Indian farmer.
                   r="4"
                   fill="#2f7357"
                 />
+
               </svg>
 
               <div className="absolute bottom-1 left-7 right-0 flex justify-between text-xs text-slate-500">
@@ -638,12 +652,14 @@ Keep the advice simple and practical for an Indian farmer.
                 <span>Dec</span>
                 <span>Jan</span>
               </div>
+
             </div>
           </div>
 
           {/* FACTORS */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
               Key Yield Factors
             </h3>
@@ -677,8 +693,10 @@ Keep the advice simple and practical for an Indian farmer.
                 )}
                 color="bg-orange-500"
               />
+
             </div>
           </div>
+
         </div>
 
         {/* ===================================================
@@ -688,6 +706,7 @@ Keep the advice simple and practical for an Indian farmer.
         <div className="rounded-3xl bg-[#d9f4dc] p-6">
 
           <div className="flex flex-wrap items-center gap-2">
+
             <span className="text-[#2f7357]">
               <Activity size={21} />
             </span>
@@ -699,7 +718,12 @@ Keep the advice simple and practical for an Indian farmer.
             <span className="rounded-full bg-[#2f7357] px-3 py-1 text-xs font-bold text-white">
               Predictive AI
             </span>
+
           </div>
+
+          {/* =================================================
+              SLIDERS + RESULTS
+          ================================================= */}
 
           <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_1fr_1.25fr]">
 
@@ -735,9 +759,8 @@ Keep the advice simple and practical for an Indian farmer.
                 PREDICTED RESULTS
               </p>
 
-              {/* YIELD */}
-
               <div className="mt-5">
+
                 <p className="font-serif text-3xl font-bold text-[#2f7357]">
                   {displayedYield}
                 </p>
@@ -745,13 +768,13 @@ Keep the advice simple and practical for an Indian farmer.
                 <p className="text-sm text-slate-500">
                   Estimated Yield
                 </p>
+
               </div>
 
               <div className="my-4 border-t border-[#e5dfd2]" />
 
-              {/* PROFIT */}
-
               <div>
+
                 <p className="text-2xl font-bold text-green-600">
                   {displayedProfit}
                 </p>
@@ -759,164 +782,8 @@ Keep the advice simple and practical for an Indian farmer.
                 <p className="text-sm text-slate-500">
                   Expected Profit
                 </p>
+
               </div>
-
-              {/* =================================================
-                  MODEL DETAILS DROPDOWN
-              ================================================= */}
-
-              <details className="mt-5 rounded-xl border border-[#e5dfd2] bg-[#fafaf7]">
-                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-[#2f7357]">
-                  ▼ Model Details
-                </summary>
-
-                <div className="space-y-3 border-t border-[#e5dfd2] px-4 py-4 text-sm">
-
-                  {predictionDebug ? (
-                    <>
-                      <DebugRow
-                        label="Prediction run"
-                        value={`#${predictionDebug.run}`}
-                      />
-
-                      <DebugRow
-                        label="Rainfall"
-                        value={`${predictionDebug.rainfall} mm`}
-                      />
-
-                      <DebugRow
-                        label="Farm area"
-                        value={`${Number(
-                          predictionDebug.farmArea
-                        ).toFixed(1)} acres`}
-                      />
-
-                      {Number.isFinite(
-                        Number(
-                          predictionDebug.areaHectares
-                        )
-                      ) && (
-                        <DebugRow
-                          label="Area in hectares"
-                          value={`${Number(
-                            predictionDebug.areaHectares
-                          ).toFixed(2)} ha`}
-                        />
-                      )}
-
-                      {Number.isFinite(
-                        Number(
-                          predictionDebug.modelPrediction
-                        )
-                      ) && (
-                        <DebugRow
-                          label="Model prediction"
-                          value={`${Number(
-                            predictionDebug.modelPrediction
-                          ).toFixed(2)} tonnes/ha`}
-                        />
-                      )}
-
-                      {Number.isFinite(
-                        Number(
-                          predictionDebug.totalProductionQuintals
-                        )
-                      ) && (
-                        <DebugRow
-                          label="Total production"
-                          value={`${Number(
-                            predictionDebug.totalProductionQuintals
-                          ).toFixed(1)} Q`}
-                        />
-                      )}
-
-                      {Number.isFinite(
-                        Number(
-                          predictionDebug.marketPrice
-                        )
-                      ) && (
-                        <DebugRow
-                          label="Market price"
-                          value={`₹${Number(
-                            predictionDebug.marketPrice
-                          ).toLocaleString(
-                            "en-IN"
-                          )}/Q`}
-                        />
-                      )}
-
-                      {Number.isFinite(
-                        Number(predictionDebug.revenue)
-                      ) && (
-                        <DebugRow
-                          label="Revenue"
-                          value={`₹${Math.round(
-                            predictionDebug.revenue
-                          ).toLocaleString(
-                            "en-IN"
-                          )}`}
-                        />
-                      )}
-
-                      {Number.isFinite(
-                        Number(predictionDebug.totalCost)
-                      ) && (
-                        <DebugRow
-                          label="Total cost"
-                          value={`₹${Math.round(
-                            predictionDebug.totalCost
-                          ).toLocaleString(
-                            "en-IN"
-                          )}`}
-                        />
-                      )}
-
-                      {Number.isFinite(
-                        Number(predictionDebug.profit)
-                      ) && (
-                        <DebugRow
-                          label="Profit"
-                          value={`₹${Math.round(
-                            predictionDebug.profit
-                          ).toLocaleString(
-                            "en-IN"
-                          )}`}
-                        />
-                      )}
-
-                      <DebugRow
-                        label="Status"
-                        value={
-                          predictionDebug.status
-                        }
-                      />
-
-                      {predictionDebug.error && (
-                        <div className="rounded-lg bg-red-50 p-3 text-xs text-red-700">
-                          {predictionDebug.error}
-                        </div>
-                      )}
-
-                      <div className="mt-2 rounded-lg bg-green-50 p-3 text-xs leading-5 text-slate-600">
-                        Profit converts the model yield
-                        (tonnes/ha) into total quintals
-                        for the selected farm area.
-                        It currently uses ₹1,900/Q and
-                        ₹15,000 per acre. The ₹1,900
-                        mandi price is temporary until
-                        the Mandi API is connected.
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-xs text-slate-500">
-                      Prediction details will appear
-                      after the model runs.
-                    </p>
-                  )}
-                </div>
-              </details>
-
-              {/* ASK AI */}
 
               <button
                 type="button"
@@ -940,9 +807,156 @@ Keep the advice simple and practical for an Indian farmer.
               <p className="mt-2 text-center text-xs text-slate-400">
                 Opens AI Copilot with your current simulation
               </p>
+
             </div>
+
           </div>
+
+          {/* =================================================
+              HORIZONTAL MODEL DETAILS
+          ================================================= */}
+
+          <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Model Details
+              </p>
+
+              <span className="text-xs text-slate-400">
+                Live simulation values
+              </span>
+
+            </div>
+
+            {predictionDebug ? (
+              <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+
+                <DebugRow
+                  label="Model prediction"
+                  value={
+                    Number.isFinite(
+                      Number(
+                        predictionDebug.modelPrediction
+                      )
+                    )
+                      ? `${Number(
+                          predictionDebug.modelPrediction
+                        ).toFixed(2)} tonnes/ha`
+                      : "--"
+                  }
+                />
+
+                <DebugRow
+                  label="Total production"
+                  value={
+                    Number.isFinite(
+                      Number(
+                        predictionDebug.totalProductionQuintals
+                      )
+                    )
+                      ? `${Number(
+                          predictionDebug.totalProductionQuintals
+                        ).toFixed(1)} Q`
+                      : "--"
+                  }
+                />
+
+                <DebugRow
+                  label="Farm area"
+                  value={`${Number(
+                    predictionDebug.farmArea
+                  ).toFixed(1)} acres`}
+                />
+
+                <DebugRow
+                  label="Rainfall"
+                  value={`${predictionDebug.rainfall} mm`}
+                />
+
+                <DebugRow
+                  label="Market price"
+                  value={
+                    Number.isFinite(
+                      Number(
+                        predictionDebug.marketPrice
+                      )
+                    )
+                      ? `₹${Number(
+                          predictionDebug.marketPrice
+                        ).toLocaleString(
+                          "en-IN"
+                        )}/Q`
+                      : "--"
+                  }
+                />
+
+                <DebugRow
+                  label="Revenue"
+                  value={
+                    Number.isFinite(
+                      Number(predictionDebug.revenue)
+                    )
+                      ? `₹${Math.round(
+                          predictionDebug.revenue
+                        ).toLocaleString(
+                          "en-IN"
+                        )}`
+                      : "--"
+                  }
+                />
+
+                <DebugRow
+                  label="Total cost"
+                  value={
+                    Number.isFinite(
+                      Number(
+                        predictionDebug.totalCost
+                      )
+                    )
+                      ? `₹${Math.round(
+                          predictionDebug.totalCost
+                        ).toLocaleString(
+                          "en-IN"
+                        )}`
+                      : "--"
+                  }
+                />
+
+                <DebugRow
+                  label="Profit"
+                  value={
+                    Number.isFinite(
+                      Number(predictionDebug.profit)
+                    )
+                      ? `₹${Math.round(
+                          predictionDebug.profit
+                        ).toLocaleString(
+                          "en-IN"
+                        )}`
+                      : "--"
+                  }
+                />
+
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">
+                Prediction details will appear after the model runs.
+              </p>
+            )}
+
+            <p className="mt-5 border-t border-[#e5dfd2] pt-4 text-xs leading-5 text-slate-400">
+              Profit currently uses the temporary ₹1,900/Q market
+              price and ₹7,000 per acre demo cultivation cost.
+              The market price will be replaced by the Mandi API
+              when it is connected.
+            </p>
+
+          </div>
+
         </div>
+
       </div>
     </Layout>
   );
@@ -954,14 +968,14 @@ Keep the advice simple and practical for an Indian farmer.
 
 function DebugRow({ label, value }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-slate-500">
+    <div>
+      <p className="text-xs text-slate-400">
         {label}
-      </span>
+      </p>
 
-      <span className="text-right font-semibold text-[#24352a]">
+      <p className="mt-1 text-sm font-semibold text-[#24352a]">
         {value}
-      </span>
+      </p>
     </div>
   );
 }
@@ -984,7 +998,9 @@ function Factor({
 
   return (
     <div>
+
       <div className="flex items-center justify-between">
+
         <p className="text-sm font-medium text-[#24352a]">
           {label}
         </p>
@@ -993,16 +1009,20 @@ function Factor({
           {displayValue ??
             `${Math.round(safeValue)}%`}
         </p>
+
       </div>
 
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e9e5dc]">
+
         <div
           className={`h-full rounded-full ${color}`}
           style={{
             width: `${safeValue}%`,
           }}
         />
+
       </div>
+
     </div>
   );
 }
@@ -1024,8 +1044,11 @@ function SliderControl({
 }) {
   return (
     <div>
+
       <div className="flex items-center justify-between">
+
         <div className="flex items-center gap-2">
+
           <span className="text-[#2f7357]">
             {icon}
           </span>
@@ -1033,12 +1056,14 @@ function SliderControl({
           <p className="text-sm font-bold text-[#24352a]">
             {label}
           </p>
+
         </div>
 
         <p className="text-sm font-bold text-[#2f7357]">
           {Number(value).toFixed(decimals)}
           {unit}
         </p>
+
       </div>
 
       <input
@@ -1054,6 +1079,7 @@ function SliderControl({
       />
 
       <div className="flex justify-between text-xs text-slate-500">
+
         <span>
           {min}
           {unit}
@@ -1063,7 +1089,9 @@ function SliderControl({
           {max}
           {unit}
         </span>
+
       </div>
+
     </div>
   );
 }
