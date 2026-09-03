@@ -47,6 +47,12 @@ const FIREBASE_PROJECT_ID = Deno.env.get("FIREBASE_PROJECT_ID")!;
 const FIREBASE_CLIENT_EMAIL = Deno.env.get("FIREBASE_CLIENT_EMAIL")!;
 const FIREBASE_PRIVATE_KEY = Deno.env.get("FIREBASE_PRIVATE_KEY")!.replace(/\\n/g, "\n");
 
+const WEATHER_API_URL = Deno.env.get("WEATHER_API_URL");
+const WEATHER_API_KEY = Deno.env.get("WEATHER_API_KEY");
+
+const MANDI_API_URL = Deno.env.get("MANDI_API_URL");
+const MANDI_API_KEY = Deno.env.get("MANDI_API_KEY");
+
 // ------------------------------------------------------------------
 // OAuth2 service-account auth for FCM HTTP v1.
 // Builds + signs a JWT, exchanges it for a short-lived access token.
@@ -122,20 +128,28 @@ async function getAccessToken(): Promise<string> {
 // ------------------------------------------------------------------
 // STUBS — replace these once the weather/mandi APIs are available.
 // ------------------------------------------------------------------
-async function fetchWeatherData(_userId: string): Promise<Record<string, number> | null> {
-  // TODO: call the real weather API once available, e.g.
-  // const res = await fetch(`https://api.weatherprovider.com/...`);
-  // const json = await res.json();
-  // return { rainfall_mm: json.rainfall, temperature_c: json.temp };
-  return null;
+async function fetchWeatherData(userId: string) {
+  const res = await fetch(
+    `${WEATHER_API_URL}?apiKey=${WEATHER_API_KEY}`
+  );
+  if (!res.ok) {
+    throw new Error(`Weather API failed: ${res.status}`);
+  }
+  const json = await res.json();
+  return {
+    rainfall_mm: json.rainfall,
+    temperature_c: json.temp,
+  };
 }
 
 async function fetchMandiData(_userId: string): Promise<Record<string, number> | null> {
-  // TODO: call the real mandi/market-price API once available, e.g.
-  // const res = await fetch(`https://api.mandiprovider.com/...`);
-  // const json = await res.json();
-  // return { price_per_quintal: json.price };
-  return null;
+  // TODO: call the real mandi/market-price API once available
+  const res = await fetch(
+     `${Deno.env.get("MANDI_API_URL")}?apiKey=${Deno.env.get("MANDI_API_KEY")}`
+  );
+  const json = await res.json();
+  return { price_per_quintal: json.price };
+
 }
 
 function evaluateCondition(value: number, operator: string, threshold: number): boolean {
