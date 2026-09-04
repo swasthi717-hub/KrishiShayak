@@ -12,6 +12,7 @@ export default defineConfig({
       manifest: false, // we're supplying public/manifest.json ourselves
       includeAssets: ['favicon.svg'],
       workbox: {
+        maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         runtimeCaching: [
           {
             // Supabase REST reads (mandi prices, weather, schemes, etc.)

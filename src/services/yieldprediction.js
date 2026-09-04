@@ -165,21 +165,27 @@ export async function predictYield({
   const output = results[outputName];
 
   if (!output?.data?.length) {
-    throw new Error("Yield model returned no prediction");
+
+    throw new Error(
+      "Yield model returned no prediction"
+    );
+
   }
 
   const predictedYield = Number(output.data[0]);
 
   if (!Number.isFinite(predictedYield)) {
-    throw new Error("Yield model returned an invalid prediction");
+    throw new Error(
+      "Yield model returned an invalid prediction"
+    );
   }
 
   return predictedYield;
 }
 
 // =============================================================
-// PROFIT
-// =============================================================
+
+// PROFIT ESTIMATION
 
 export function estimateProfit(
   predictedYield,
@@ -192,27 +198,23 @@ export function estimateProfit(
   const area = Number(areaInAcres);
   const cost = Number(costPerAcre);
 
-  if (!Number.isFinite(yieldValue)) {
-    throw new Error("Invalid predicted yield");
+  if (
+    !Number.isFinite(yieldValue) ||
+    !Number.isFinite(marketPrice) ||
+    !Number.isFinite(area) ||
+    !Number.isFinite(cost)
+  ) {
+    throw new Error(
+      "Invalid values supplied for profit calculation"
+    );
   }
 
-  if (!Number.isFinite(marketPrice)) {
-    throw new Error("Invalid market price");
-  }
-
-  if (!Number.isFinite(area)) {
-    throw new Error("Invalid farm area");
-  }
-
-  if (!Number.isFinite(cost)) {
-    throw new Error("Invalid cost per acre");
-  }
-
-  // IMPORTANT:
-  // This assumes the ONNX model output is TOTAL farm yield.
-  //
-  // If your training target was yield per acre, change revenue to:
-  // const revenue = yieldValue * area * marketPrice;
+  /*
+   * This assumes the ONNX model output is TOTAL farm yield.
+   *
+   * If the training target was yield per acre,
+   * revenue would need to multiply yield by area.
+   */
 
   const revenue = yieldValue * marketPrice;
   const totalCost = cost * area;

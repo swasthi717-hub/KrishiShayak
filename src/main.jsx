@@ -5,10 +5,9 @@ import "./index.css";
 import "./pwa";
 
 import App from "./App.jsx";
+import { syncManager } from "./sync/syncManager";
 import { AuthProvider } from "./context/AuthContext";
 import { LanguageProvider } from "./context/LanguageContext";
-
-import { syncManager } from "./sync/syncManager";
 
 syncManager.trigger();
 

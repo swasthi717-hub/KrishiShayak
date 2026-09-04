@@ -1,39 +1,39 @@
-let recognition = null;
+// frontend/src/services/voiceAssistant.js
 
-/**
- * 🎤 Start speech recognition
- */
+let recognition = null;
+/*
+  Start listening to the farmer's voice.
+
+  language:
+    Hindi     -> hi-IN
+    Marathi   -> mr-IN
+    Tamil     -> ta-IN
+    Telugu    -> te-IN
+    Kannada   -> kn-IN
+    Punjabi   -> pa-IN
+    Bengali   -> bn-IN
+    English   -> en-IN
+*/
 export function startListening({
   language = "hi-IN",
-  onStart,
   onResult,
+  onStart,
   onEnd,
   onError,
 }) {
   const SpeechRecognition =
-    window.SpeechRecognition ||
-    window.webkitSpeechRecognition;
+    window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  // Browser does not support speech recognition
   if (!SpeechRecognition) {
-    const error = new Error(
-      "Speech recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge."
+    onError?.(
+      "Voice input is not supported in this browser. Please use Chrome or Edge."
     );
-
-    console.error(error);
-    onError?.(error);
     return;
   }
 
   // Stop an existing recognition session
   if (recognition) {
-    try {
-      recognition.stop();
-    } catch {
-      // Ignore if already stopped
-    }
-
-    recognition = null;
+    recognition.stop();
   }
 
   // Create new recognition instance
@@ -46,51 +46,26 @@ export function startListening({
 
   // 🎤 Recognition started
   recognition.onstart = () => {
-    console.log("🎤 Speech recognition started");
     onStart?.();
   };
 
   // 📝 Speech converted to text
   recognition.onresult = (event) => {
-    const transcript =
-      event.results?.[0]?.[0]?.transcript?.trim();
+    const transcript = event.results[0][0].transcript;
 
-    console.log("🎤 Transcript:", transcript);
-
-    if (transcript) {
-      onResult?.(transcript);
-    }
+    onResult?.(transcript);
   };
 
   // ❌ Recognition error
   recognition.onerror = (event) => {
-    console.error(
-      "🎤 Speech recognition error:",
-      event.error
-    );
+    console.error("Speech recognition error:", event.error);
 
-    let message = "Could not use the microphone.";
-
-    if (event.error === "not-allowed") {
-      message =
-        "Microphone permission was denied. Please allow microphone access in your browser.";
-    } else if (event.error === "no-speech") {
-      message =
-        "No speech was detected. Please try speaking again.";
-    } else if (event.error === "audio-capture") {
-      message =
-        "No microphone was found. Please check your microphone.";
-    } else if (event.error === "network") {
-      message =
-        "Speech recognition could not connect to the speech service.";
-    }
-
-    onError?.(new Error(message));
+    onError?.(event.error);
   };
 
   // 🛑 Recognition ended
   recognition.onend = () => {
-    console.log("🎤 Speech recognition ended");
+        console.log("🎤 Speech recognition ended");
 
     recognition = null;
 
@@ -109,49 +84,45 @@ export function startListening({
     recognition = null;
 
     onError?.(error);
+    }
   }
-}
 
 /**
  * 🛑 Stop speech recognition
  */
 export function stopListening() {
   if (recognition) {
-    try {
-      recognition.stop();
-    } catch {
-      // Ignore if already stopped
-    }
-
+    recognition.stop();
     recognition = null;
   }
 }
 
-/**
- * 🔊 Speak AI response using browser text-to-speech
- */
+/*
+  Speak Gemini's response aloud.
+
+  The language should match the farmer's language.
+*/
+
 export function speakResponse(
   text,
   language = "hi-IN"
 ) {
   if (!text) return;
 
-  // Browser does not support speech synthesis
-  if (!window.speechSynthesis) {
-    console.error(
-      "Text-to-speech is not supported in this browser."
+  if (!("speechSynthesis" in window)) {
+    console.warn(
+      "Speech synthesis is not supported in this browser."
     );
     return;
   }
 
-  // Stop any currently playing speech
+  // Stop anything currently being spoken
   window.speechSynthesis.cancel();
 
-  const utterance =
-    new SpeechSynthesisUtterance(text);
+  const utterance = new SpeechSynthesisUtterance(text);
 
   utterance.lang = language;
-  utterance.rate = 0.95;
+  utterance.rate = 0.9;
   utterance.pitch = 1;
   utterance.volume = 1;
 
@@ -173,11 +144,8 @@ export function speakResponse(
   window.speechSynthesis.speak(utterance);
 }
 
-/**
- * 🔇 Stop AI text-to-speech
- */
 export function stopSpeaking() {
-  if (window.speechSynthesis) {
+  if ("speechSynthesis" in window) {
     window.speechSynthesis.cancel();
     console.log("🔇 AI speech stopped");
   }

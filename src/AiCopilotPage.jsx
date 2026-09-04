@@ -4,6 +4,7 @@ import {
   Volume2,
   Send,
   Star,
+  Loader2,
   Square,
 } from "lucide-react";
 
@@ -27,19 +28,21 @@ import { translateTexts } from "./services/translation";
    SUPPORTED LANGUAGES
 ============================================================ */
 
-const SUPPORTED_LANGUAGES = [
-  { code: "hi", native: "हिंदी", name: "Hindi" },
-  { code: "mr", native: "मराठी", name: "Marathi" },
-  { code: "ta", native: "தமிழ்", name: "Tamil" },
-  { code: "te", native: "తెలుగు", name: "Telugu" },
-  { code: "kn", native: "ಕನ್ನಡ", name: "Kannada" },
-  { code: "pa", native: "ਪੰਜਾਬੀ", name: "Punjabi" },
-  { code: "bn", native: "বাংলা", name: "Bengali" },
-  { code: "or", native: "ଓଡ଼ିଆ", name: "Odia" },
-  { code: "gu", native: "ગુજરાતી", name: "Gujarati" },
-  { code: "ml", native: "മലയാളം", name: "Malayalam" },
-  { code: "en", native: "English", name: "English" },
-];
+const LANGUAGE_NAMES = {
+  en: "English",
+  hi: "हिंदी",
+  mr: "मराठी",
+  ta: "தமிழ்",
+  te: "తెలుగు",
+  kn: "ಕನ್ನಡ",
+  ml: "മലയാളം",
+  gu: "ગુજરાતી",
+  pa: "ਪੰਜਾਬੀ",
+  bn: "বাংলা",
+  or: "ଓଡ଼ିଆ",
+};
+
+const SUPPORTED_LANGUAGES = Object.keys(LANGUAGE_NAMES);
 
 /* ============================================================
    VOICE LANGUAGE CODES
@@ -79,12 +82,11 @@ const LANGUAGE_PROMPT_CODES = {
 
 /* ============================================================
    ENGLISH SOURCE TEXT
-   These are only the source strings sent to MyMemory.
 ============================================================ */
 
 const ENGLISH_TEXTS = {
   copilotTitle: "AI Farming Copilot",
-  copilotSubtitle: "AI assistant · Multilingual",
+  copilotSubtitle: "Online · Multilingual",
   voiceLanguage: "Voice language:",
 
   quickPest: "Pest control",
@@ -93,10 +95,10 @@ const ENGLISH_TEXTS = {
   quickIrrigation: "When to irrigate?",
 
   initialGreeting:
-    "Namaste! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices — in your preferred language.",
+    "नमस्ते! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
 
   listen: "Listen",
-  thinking: "Thinking...",
+  thinking: "AI is thinking...",
 
   inputPlaceholder:
     "Type or speak in any language...",
@@ -122,10 +124,13 @@ const ENGLISH_TEXTS = {
 
   micPermission:
     "Microphone permission was denied. Please allow microphone access in your browser.",
+
   micError:
     "I couldn't hear that clearly. Please try speaking again.",
+
   aiError:
     "Unable to connect to the AI assistant.",
+
   translating: "Translating...",
 };
 
@@ -192,8 +197,6 @@ export default function AiCopilotPage() {
 
   /*
    * GLOBAL LANGUAGE
-   *
-   * This is the same language selected from Profile.
    */
   const { language } = useLanguage();
 
@@ -210,10 +213,29 @@ export default function AiCopilotPage() {
   ]);
 
   const [input, setInput] = useState("");
+
+  /*
+   * Keep the existing language selector UI from HEAD.
+   * It starts with the globally selected language.
+   */
+  const [selectedLanguage, setSelectedLanguage] =
+    useState(language || "hi");
+
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
-  const [translations, setTranslations] = useState(ENGLISH_TEXTS);
-  const [isTranslating, setIsTranslating] = useState(false);
+  const [translations, setTranslations] =
+    useState(ENGLISH_TEXTS);
+  const [isTranslating, setIsTranslating] =
+    useState(false);
+
+  /*
+   * Keep the dropdown synchronized with the global language.
+   */
+  useEffect(() => {
+    if (language) {
+      setSelectedLanguage(language);
+    }
+  }, [language]);
 
   /* ==========================================================
      TRANSLATE COPILOT UI
@@ -223,9 +245,6 @@ export default function AiCopilotPage() {
     let cancelled = false;
 
     async function loadTranslations() {
-      /*
-       * English does not need an API request.
-       */
       if (!language || language === "en") {
         setTranslations(ENGLISH_TEXTS);
         return;
@@ -281,11 +300,6 @@ export default function AiCopilotPage() {
   ========================================================== */
 
   useEffect(() => {
-    /*
-     * Only update the first/default AI message.
-     *
-     * Existing conversation messages are NOT translated.
-     */
     setMessages((currentMessages) => {
       if (
         currentMessages.length === 1 &&
@@ -315,14 +329,6 @@ export default function AiCopilotPage() {
       return;
     }
 
-    /*
-     * IMPORTANT:
-     * The actual text that the user clicked/typed is sent.
-     *
-     * If the selected language is Hindi and the button says:
-     * "कपास में कौन सी बीमारी है?"
-     * then THAT Hindi text goes into the chat.
-     */
     setMessages((prev) => [
       ...prev,
       {
@@ -337,10 +343,10 @@ export default function AiCopilotPage() {
 
     try {
       /*
-       * Gemini receives the global language code.
+       * Use the language selected in the existing dropdown.
        */
       const languageCode =
-        LANGUAGE_PROMPT_CODES[language] || "en";
+        LANGUAGE_PROMPT_CODES[selectedLanguage] || "en";
 
       const answer = await getChatResponse(
         trimmed,
@@ -361,7 +367,7 @@ export default function AiCopilotPage() {
        */
       speakResponse(
         answer,
-        LANGUAGE_VOICE_CODES[language] || "en-IN"
+        LANGUAGE_VOICE_CODES[selectedLanguage] || "en-IN"
       );
     } catch (error) {
       console.error("Gemini error:", error);
@@ -394,8 +400,7 @@ export default function AiCopilotPage() {
     }
 
     /*
-     * Clear navigation state so refreshing
-     * doesn't send the prompt again.
+     * Prevent the same prompt from being sent again on refresh.
      */
     window.history.replaceState(
       {},
@@ -419,17 +424,22 @@ export default function AiCopilotPage() {
 
     startListening({
       language:
-        LANGUAGE_VOICE_CODES[language] || "en-IN",
+        LANGUAGE_VOICE_CODES[selectedLanguage] || "en-IN",
 
       onStart: () => {
         setIsListening(true);
       },
 
       onResult: (transcript) => {
+        console.log(
+          "🎤 Speech converted to:",
+          transcript
+        );
+
         setInput(transcript);
 
         /*
-         * Send exactly what was spoken.
+         * Automatically send exactly what was spoken.
          */
         sendMessage(transcript);
       },
@@ -439,7 +449,10 @@ export default function AiCopilotPage() {
       },
 
       onError: (error) => {
-        console.error("Voice input error:", error);
+        console.error(
+          "🎤 Voice input error:",
+          error
+        );
 
         setIsListening(false);
 
@@ -457,27 +470,30 @@ export default function AiCopilotPage() {
   }
 
   /* ==========================================================
-     SPEAK
+     TEXT TO SPEECH
   ========================================================== */
 
   function handleSpeak(text) {
     speakResponse(
       text,
-      LANGUAGE_VOICE_CODES[language] || "en-IN"
+      LANGUAGE_VOICE_CODES[selectedLanguage] || "en-IN"
     );
   }
 
   /* ==========================================================
-     CURRENT LANGUAGE
+     CLEANUP
   ========================================================== */
 
-  const currentLanguage =
-    SUPPORTED_LANGUAGES.find(
-      (item) => item.code === language
-    ) ||
-    SUPPORTED_LANGUAGES.find(
-      (item) => item.code === "en"
-    );
+  useEffect(() => {
+    return () => {
+      stopListening();
+      stopSpeaking();
+
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   /* ==========================================================
      UI
@@ -487,15 +503,14 @@ export default function AiCopilotPage() {
     <Layout title={translations.copilotTitle}>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
 
-        {/* ====================================================
-            MAIN CHAT
-        ==================================================== */}
+        {/* MAIN CHAT */}
 
         <div className="rounded-2xl bg-[#f4f1e7] p-5 sm:p-6">
 
           {/* HEADER */}
 
           <div className="flex items-center gap-3">
+
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1f5b3d] text-white">
               <Mic size={22} />
             </div>
@@ -510,23 +525,33 @@ export default function AiCopilotPage() {
                 {translations.copilotSubtitle}
               </p>
             </div>
+
           </div>
 
-          {/* LANGUAGE */}
+          {/* LANGUAGE SELECTOR */}
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
+
             <span className="text-xs font-semibold text-slate-500">
               {translations.voiceLanguage}
             </span>
 
-            <div className="rounded-full border border-[#e5dfd2] bg-white px-3 py-1.5 text-xs font-medium text-[#24352a]">
-              {currentLanguage.native}
-
-              <span className="text-slate-400">
-                {" "}
-                · {currentLanguage.name}
-              </span>
-            </div>
+            <select
+              value={selectedLanguage}
+              onChange={(e) =>
+                setSelectedLanguage(e.target.value)
+              }
+              className="rounded-full border border-[#e5dfd2] bg-white px-3 py-1.5 text-xs font-medium text-[#24352a] outline-none"
+            >
+              {SUPPORTED_LANGUAGES.map((code) => (
+                <option
+                  key={code}
+                  value={code}
+                >
+                  {LANGUAGE_NAMES[code]}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* TRANSLATION STATUS */}
@@ -540,6 +565,7 @@ export default function AiCopilotPage() {
           {/* QUICK CHIPS */}
 
           <div className="mt-5 flex flex-wrap gap-2">
+
             {QUICK_QUESTIONS.map((chip) => (
               <button
                 key={chip.key}
@@ -553,41 +579,51 @@ export default function AiCopilotPage() {
                 {translations[chip.key]}
               </button>
             ))}
+
           </div>
 
           {/* CHAT */}
 
           <div className="mt-5 space-y-4">
+
             {messages.map((msg, i) =>
               msg.sender === "ai" ? (
                 <div
                   key={`${msg.sender}-${i}`}
                   className="flex items-start gap-2.5"
                 >
+
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1f5b3d] text-white">
                     <Mic size={14} />
                   </div>
 
                   <div>
+
                     <div className="max-w-xl whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-[#24352a] shadow-sm">
                       {msg.text}
                     </div>
 
-                    <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
-                      <span>{msg.time}</span>
+                    <div className="mt-1 flex items-center gap-3 text-xs text-slate-400">
+
+                      <span>
+                        {msg.time}
+                      </span>
 
                       <button
                         type="button"
                         onClick={() =>
                           handleSpeak(msg.text)
                         }
-                        className="flex items-center gap-1 hover:text-[#1f5b3d]"
+                        className="flex items-center gap-1 hover:text-[#2f7357]"
                       >
                         <Volume2 size={12} />
                         {translations.listen}
                       </button>
+
                     </div>
+
                   </div>
+
                 </div>
               ) : (
                 <div
@@ -604,21 +640,24 @@ export default function AiCopilotPage() {
             {/* THINKING */}
 
             {isThinking && (
-              <div className="flex items-start gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1f5b3d] text-white">
-                  <Mic size={14} />
-                </div>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
 
-                <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
-                  {translations.thinking}
-                </div>
+                <Loader2
+                  size={16}
+                  className="animate-spin"
+                />
+
+                {translations.thinking}
+
               </div>
             )}
+
           </div>
 
           {/* INPUT */}
 
           <div className="mt-6 flex items-center gap-2">
+
             <button
               type="button"
               onClick={handleMicClick}
@@ -628,11 +667,6 @@ export default function AiCopilotPage() {
                   ? "bg-red-500 hover:bg-red-600"
                   : "bg-[#1f5b3d] hover:bg-[#173b27]"
               } disabled:opacity-60`}
-              title={
-                isListening
-                  ? "Stop listening"
-                  : "Speak your question"
-              }
             >
               {isListening ? (
                 <Square size={16} />
@@ -647,7 +681,10 @@ export default function AiCopilotPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey
+                ) {
                   e.preventDefault();
                   sendMessage(input);
                 }
@@ -666,9 +703,10 @@ export default function AiCopilotPage() {
             >
               <Send size={16} />
             </button>
+
           </div>
 
-          {/* STOP VOICE */}
+          {/* STOP VOICE RESPONSE */}
 
           <button
             type="button"
@@ -677,18 +715,19 @@ export default function AiCopilotPage() {
           >
             {translations.stopVoiceResponse}
           </button>
+
         </div>
 
-        {/* ====================================================
-            RIGHT COLUMN
-        ==================================================== */}
+        {/* RIGHT COLUMN */}
 
         <div className="space-y-5">
 
           {/* SAMPLE QUESTIONS */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <p className="flex items-center gap-2 font-serif text-base font-bold text-[#24352a]">
+
               <Star
                 size={16}
                 className="text-[#c9a24b]"
@@ -696,9 +735,11 @@ export default function AiCopilotPage() {
               />
 
               {translations.sampleQuestions}
+
             </p>
 
             <div className="mt-3 space-y-2">
+
               {SAMPLE_QUESTIONS.map((question) => (
                 <button
                   key={question.key}
@@ -714,28 +755,35 @@ export default function AiCopilotPage() {
                   {translations[question.key]}
                 </button>
               ))}
+
             </div>
+
           </div>
 
-          {/* SUPPORTED LANGUAGES */}
+          {/* LANGUAGE */}
 
           <div className="rounded-2xl bg-[#e7edda] p-5">
+
             <p className="font-serif text-base font-bold text-[#24352a]">
               {translations.supportedLanguages}
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {SUPPORTED_LANGUAGES.map((lang) => (
+
+              {SUPPORTED_LANGUAGES.map((code) => (
                 <span
-                  key={lang.code}
+                  key={code}
                   className="rounded-full bg-white px-3 py-1 text-sm font-medium text-[#24352a] shadow-sm"
                 >
-                  {lang.native}
+                  {LANGUAGE_NAMES[code]}
                 </span>
               ))}
+
             </div>
+
           </div>
         </div>
+
       </div>
     </Layout>
   );

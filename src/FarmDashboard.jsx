@@ -106,30 +106,13 @@ export default function FarmDashboardPage() {
   const navigate = useNavigate();
   const { language } = useLanguage();
 
-  const [translations, setTranslations] = useState({});
-  const [rainfall, setRainfall] = useState(50);
-  const [fertilizer, setFertilizer] = useState(40);
-
-  const [modelLoading, setModelLoading] = useState(true);
-  const [predictionLoading, setPredictionLoading] = useState(false);
-  const [modelError, setModelError] = useState("");
-
-  const [predictedYield, setPredictedYield] = useState(22);
-  const [predictedProfit, setPredictedProfit] = useState(
-    22 * FARM.marketPricePerQuintal
-  );
-
-  const [yieldFactors, setYieldFactors] = useState(null);
-  const [modelReady, setModelReady] = useState(false);
-
-  // Prevent an older async prediction from overwriting a newer one.
-  const predictionRequestId = useRef(0);
-
   /*
    * =========================================================
    * TRANSLATION
    * =========================================================
    */
+
+  const [translations, setTranslations] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +121,7 @@ export default function FarmDashboardPage() {
       try {
         if (language === "en") {
           const englishMap = {};
+
           UI_TEXT.forEach((text) => {
             englishMap[text] = text;
           });
@@ -159,9 +143,13 @@ export default function FarmDashboardPage() {
           setTranslations(createTranslationMap(translated));
         }
       } catch (error) {
-        console.error("Farm Dashboard translation failed:", error);
+        console.error(
+          "Farm Dashboard translation failed:",
+          error
+        );
 
         const fallback = {};
+
         UI_TEXT.forEach((text) => {
           fallback[text] = text;
         });
@@ -183,6 +171,31 @@ export default function FarmDashboardPage() {
 
   /*
    * =========================================================
+   * WHAT-IF INPUTS
+   * =========================================================
+   */
+
+  const [rainfall, setRainfall] = useState(50);
+  const [fertilizer, setFertilizer] = useState(40);
+
+  const [modelLoading, setModelLoading] = useState(true);
+  const [predictionLoading, setPredictionLoading] =
+    useState(false);
+  const [modelError, setModelError] = useState("");
+
+  const [predictedYield, setPredictedYield] = useState(22);
+  const [predictedProfit, setPredictedProfit] = useState(
+    22 * FARM.marketPricePerQuintal
+  );
+
+  const [yieldFactors, setYieldFactors] = useState(null);
+  const [modelReady, setModelReady] = useState(false);
+
+  // Prevent an older async prediction from overwriting a newer one.
+  const predictionRequestId = useRef(0);
+
+  /*
+   * =========================================================
    * LOAD YIELD MODEL + FACTORS
    * =========================================================
    */
@@ -199,7 +212,9 @@ export default function FarmDashboardPage() {
 
         if (cancelled) return;
 
-        setModelReady(true);
+        if (!cancelled) {
+          setModelReady(true);
+        }
 
         try {
           const factors = await getYieldFactors();
@@ -208,10 +223,16 @@ export default function FarmDashboardPage() {
             setYieldFactors(factors);
           }
         } catch (error) {
-          console.warn("Could not load yield factors:", error);
+          console.warn(
+            "Could not load yield factors:",
+            error
+          );
         }
       } catch (error) {
-        console.error("Failed to load yield model:", error);
+        console.error(
+          "Failed to load yield model:",
+          error
+        );
 
         if (!cancelled) {
           setModelError(
@@ -303,7 +324,10 @@ export default function FarmDashboardPage() {
         setPredictedYield(yieldValue);
         setPredictedProfit(Number(profitValue));
       } catch (error) {
-        console.error("Yield prediction failed:", error);
+        console.error(
+          "Yield prediction failed:",
+          error
+        );
 
         if (
           cancelled ||
@@ -319,14 +343,19 @@ export default function FarmDashboardPage() {
           (Number(rainfall) - 50) * 0.08 +
           (Number(fertilizer) - 40) * 0.03;
 
-        const safeYield = Math.max(0, Number(fallbackYield));
+        const safeYield = Math.max(
+          0,
+          Number(fallbackYield)
+        );
 
         const fallbackProfit =
-          safeYield * FARM.marketPricePerQuintal -
+          safeYield *
+            FARM.marketPricePerQuintal -
           FARM.area * FARM.costPerAcre;
 
         setPredictedYield(safeYield);
         setPredictedProfit(fallbackProfit);
+
         setModelError(
           error?.message ||
             "Unable to calculate the yield prediction. Showing an estimated result."
@@ -533,11 +562,45 @@ Keep the advice simple and practical for an Indian farmer.
                 className="absolute left-7 top-0 h-[210px] w-[calc(100%-28px)]"
                 preserveAspectRatio="none"
               >
-                <line x1="0" y1="10" x2="700" y2="10" stroke="#eeeae2" />
-                <line x1="0" y1="57" x2="700" y2="57" stroke="#eeeae2" />
-                <line x1="0" y1="105" x2="700" y2="105" stroke="#eeeae2" />
-                <line x1="0" y1="152" x2="700" y2="152" stroke="#eeeae2" />
-                <line x1="0" y1="200" x2="700" y2="200" stroke="#eeeae2" />
+                <line
+                  x1="0"
+                  y1="10"
+                  x2="700"
+                  y2="10"
+                  stroke="#eeeae2"
+                />
+
+                <line
+                  x1="0"
+                  y1="57"
+                  x2="700"
+                  y2="57"
+                  stroke="#eeeae2"
+                />
+
+                <line
+                  x1="0"
+                  y1="105"
+                  x2="700"
+                  y2="105"
+                  stroke="#eeeae2"
+                />
+
+                <line
+                  x1="0"
+                  y1="152"
+                  x2="700"
+                  y2="152"
+                  stroke="#eeeae2"
+                />
+
+                <line
+                  x1="0"
+                  y1="200"
+                  x2="700"
+                  y2="200"
+                  stroke="#eeeae2"
+                />
 
                 <path
                   d="
@@ -569,12 +632,47 @@ Keep the advice simple and practical for an Indian farmer.
                   strokeWidth="3"
                 />
 
-                <circle cx="15" cy="100" r="4" fill="#2f7357" />
-                <circle cx="175" cy="108" r="4" fill="#2f7357" />
-                <circle cx="315" cy="75" r="4" fill="#2f7357" />
-                <circle cx="455" cy="65" r="4" fill="#2f7357" />
-                <circle cx="580" cy="92" r="4" fill="#2f7357" />
-                <circle cx="685" cy="40" r="4" fill="#2f7357" />
+                <circle
+                  cx="15"
+                  cy="100"
+                  r="4"
+                  fill="#2f7357"
+                />
+
+                <circle
+                  cx="175"
+                  cy="108"
+                  r="4"
+                  fill="#2f7357"
+                />
+
+                <circle
+                  cx="315"
+                  cy="75"
+                  r="4"
+                  fill="#2f7357"
+                />
+
+                <circle
+                  cx="455"
+                  cy="65"
+                  r="4"
+                  fill="#2f7357"
+                />
+
+                <circle
+                  cx="580"
+                  cy="92"
+                  r="4"
+                  fill="#2f7357"
+                />
+
+                <circle
+                  cx="685"
+                  cy="40"
+                  r="4"
+                  fill="#2f7357"
+                />
               </svg>
 
               <div className="absolute bottom-1 left-7 right-0 flex justify-between text-xs text-slate-500">
@@ -675,8 +773,12 @@ Keep the advice simple and practical for an Indian farmer.
                 <p className="font-serif text-3xl font-bold text-[#2f7357]">
                   {predictionLoading
                     ? t("Calculating...")
-                    : Number.isFinite(Number(predictedYield))
-                      ? Number(predictedYield).toFixed(1)
+                    : Number.isFinite(
+                        Number(predictedYield)
+                      )
+                      ? Number(
+                          predictedYield
+                        ).toFixed(1)
                       : "0.0"}{" "}
                   {!predictionLoading && "Q"}
                 </p>
@@ -710,6 +812,7 @@ Keep the advice simple and practical for an Indian farmer.
                 </p>
               </div>
 
+              {/* AI OPTIMIZATION */}
               <button
                 type="button"
                 onClick={handleAskAI}
@@ -755,7 +858,11 @@ Keep the advice simple and practical for an Indian farmer.
  * =============================================================
  */
 
-function Factor({ label, value, color }) {
+function Factor({
+  label,
+  value,
+  color,
+}) {
   const numericValue = Number(value);
 
   const safeValue = Number.isFinite(numericValue)

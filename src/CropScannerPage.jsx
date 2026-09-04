@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+
 import {
   Camera,
   Upload,
@@ -8,6 +9,7 @@ import {
   Loader2,
   Save,
   Volume2,
+  ScanSearch,
   AlertCircle,
 } from "lucide-react";
 
@@ -19,6 +21,7 @@ import {
 } from "./services/diseasedetection.js";
 
 import { getDiseaseExplanation } from "./services/gemini.js";
+
 import { supabase } from "./lib/supabase";
 import { queueTableWrite } from "./sync/queueAction";
 
@@ -103,30 +106,33 @@ export default function CropScannerPage() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
+  const [disease, setDisease] = useState(null);
+  const [confidence, setConfidence] = useState(null);
+  const [severity, setSeverity] = useState("Moderate");
+
+  const [explanation, setExplanation] = useState("");
+
+  const [selectedCrop, setSelectedCrop] = useState("");
+  const [farmId, setFarmId] = useState(null);
+
+  const [recentScans, setRecentScans] = useState([]);
+
   const [modelReady, setModelReady] = useState(false);
   const [modelLoading, setModelLoading] = useState(true);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [disease, setDisease] = useState(null);
-  const [confidence, setConfidence] = useState(null);
-  const [severity, setSeverity] = useState("Moderate");
-
-  const [explanation, setExplanation] = useState("");
-  const [selectedCrop, setSelectedCrop] = useState("");
-  const [farmId, setFarmId] = useState(null);
-
   const [message, setMessage] = useState("");
   const [modelError, setModelError] = useState("");
 
-  const [recentScans, setRecentScans] = useState([]);
-
   const [translations, setTranslations] = useState(() => {
     const initial = {};
+
     UI_TEXT.forEach((text) => {
       initial[text] = text;
     });
+
     return initial;
   });
 
@@ -144,6 +150,7 @@ export default function CropScannerPage() {
     async function translatePage() {
       if (!language || language === "en") {
         const english = {};
+
         UI_TEXT.forEach((text) => {
           english[text] = text;
         });
@@ -151,6 +158,7 @@ export default function CropScannerPage() {
         if (!cancelled) {
           setTranslations(english);
         }
+
         return;
       }
 
@@ -164,13 +172,17 @@ export default function CropScannerPage() {
         if (cancelled) return;
 
         const result = {};
+
         UI_TEXT.forEach((text, index) => {
           result[text] = translated[index] || text;
         });
 
         setTranslations(result);
       } catch (error) {
-        console.error("Crop Scanner translation failed:", error);
+        console.error(
+          "Crop Scanner translation failed:",
+          error
+        );
       }
     }
 
@@ -201,7 +213,10 @@ export default function CropScannerPage() {
           setModelReady(true);
         }
       } catch (error) {
-        console.error("Disease model loading failed:", error);
+        console.error(
+          "Disease model loading failed:",
+          error
+        );
 
         if (!cancelled) {
           setModelReady(false);
@@ -275,6 +290,13 @@ export default function CropScannerPage() {
           }
         }
 
+        /*
+         * Load actual saved disease scans.
+         *
+         * This intentionally uses disease_reports rather than
+         * the old disease_predictions table.
+         */
+
         const {
           data: scans,
           error: scansError,
@@ -282,7 +304,9 @@ export default function CropScannerPage() {
           .from("disease_reports")
           .select("id, crop_name, notes, created_at")
           .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
+          .order("created_at", {
+            ascending: false,
+          })
           .limit(5);
 
         if (scansError) throw scansError;
@@ -291,7 +315,10 @@ export default function CropScannerPage() {
           setRecentScans(scans || []);
         }
       } catch (error) {
-        console.error("Failed to load scanner data:", error);
+        console.error(
+          "Failed to load scanner data:",
+          error
+        );
       }
     }
 
@@ -317,7 +344,9 @@ export default function CropScannerPage() {
     setModelError("");
 
     if (file.size > 10 * 1024 * 1024) {
-      setMessage(t("Please choose an image smaller than 10MB."));
+      setMessage(
+        t("Please choose an image smaller than 10MB.")
+      );
       return;
     }
 
@@ -336,6 +365,7 @@ export default function CropScannerPage() {
 
     setSelectedFile(file);
     setPreviewUrl(url);
+
     setDisease(null);
     setConfidence(null);
     setSeverity("Moderate");
@@ -393,7 +423,9 @@ export default function CropScannerPage() {
           const detection = await detectDisease(image);
 
           if (!detection) {
-            throw new Error("Disease model returned no result.");
+            throw new Error(
+              "Disease model returned no result."
+            );
           }
 
           const diseaseName =
@@ -408,11 +440,13 @@ export default function CropScannerPage() {
           );
 
           setDisease(diseaseName);
+
           setConfidence(
             Number.isFinite(numericConfidence)
               ? numericConfidence
               : null
           );
+
           setSeverity(
             detection.severity || "Moderate"
           );
@@ -426,6 +460,7 @@ export default function CropScannerPage() {
                 "Unable to confidently identify this disease. Please upload a clearer leaf photo."
               )
             );
+
             return;
           }
 
@@ -471,6 +506,7 @@ export default function CropScannerPage() {
 
       image.onerror = () => {
         setAnalyzing(false);
+
         setMessage(
           t("Unable to load the selected image.")
         );
@@ -479,8 +515,12 @@ export default function CropScannerPage() {
       image.src = previewUrl;
     } catch (error) {
       console.error(error);
+
       setAnalyzing(false);
-      setMessage(t("Unable to analyze this image."));
+
+      setMessage(
+        t("Unable to analyze this image.")
+      );
     }
   }
 
@@ -521,14 +561,15 @@ export default function CropScannerPage() {
 
       const notes = `Detected: ${disease} (${confidenceValue}% confidence)`;
 
-      const cropName = selectedCrop || disease;
+      const cropName =
+        selectedCrop || "Unknown Crop";
 
       const recordId = await queueTableWrite({
         table: "disease_reports",
         operation: "insert",
         payload: {
           user_id: user.id,
-          farm_id: farmId || undefined,
+          farm_id: farmId || null,
           crop_name: cropName,
           notes,
         },
@@ -559,7 +600,9 @@ export default function CropScannerPage() {
         error
       );
 
-      setMessage(t("Unable to save disease scan."));
+      setMessage(
+        t("Unable to save disease scan.")
+      );
     } finally {
       setSaving(false);
     }
@@ -601,8 +644,10 @@ export default function CropScannerPage() {
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* LEFT COLUMN */}
+
         <div className="space-y-5">
           {/* UPLOAD */}
+
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-[#e8c9a0] bg-[#fbeee0] p-10 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f3d9b8] text-[#b5651d]">
               <Camera size={26} />
@@ -637,17 +682,22 @@ export default function CropScannerPage() {
           </div>
 
           {/* ERROR / MODEL STATUS */}
+
           {(message || modelError) && (
             <div className="flex items-start gap-2 rounded-xl bg-red-50 p-4 text-sm text-red-700">
               <AlertCircle
                 size={18}
                 className="mt-0.5 shrink-0"
               />
-              <span>{message || modelError}</span>
+
+              <span>
+                {message || modelError}
+              </span>
             </div>
           )}
 
           {/* TIPS */}
+
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <p className="flex items-center gap-2 font-bold text-[#24352a]">
               <Eye size={16} />
@@ -664,6 +714,7 @@ export default function CropScannerPage() {
                     size={16}
                     className="shrink-0 text-green-600"
                   />
+
                   {t(tip)}
                 </li>
               ))}
@@ -672,8 +723,10 @@ export default function CropScannerPage() {
         </div>
 
         {/* RIGHT COLUMN */}
+
         <div className="space-y-5">
           {/* IMAGE / RESULT */}
+
           <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-[#e5dfd2]">
             {previewUrl ? (
               <>
@@ -687,30 +740,39 @@ export default function CropScannerPage() {
                 <button
                   type="button"
                   onClick={analyzeImage}
-                  disabled={modelLoading || analyzing}
-                  className="flex items-center gap-2 rounded-full bg-[#2f7357] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#245d46] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={
+                    !modelReady ||
+                    modelLoading ||
+                    analyzing
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1f5b3d] px-5 py-3 text-sm font-bold text-white hover:bg-[#173b27] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {analyzing ? (
                     <>
                       <Loader2
-                        size={16}
+                        size={17}
                         className="animate-spin"
                       />
+
                       {t("Analyzing...")}
+                    </>
+                  ) : modelLoading ? (
+                    <>
+                      <Loader2
+                        size={17}
+                        className="animate-spin"
+                      />
+
+                      {t("Loading disease model...")}
                     </>
                   ) : (
                     <>
-                      <Leaf size={16} />
+                      <ScanSearch size={17} />
+
                       {t("Analyze Leaf")}
                     </>
                   )}
                 </button>
-
-                {modelLoading && (
-                  <p className="text-xs text-slate-500">
-                    {t("Loading disease model...")}
-                  </p>
-                )}
               </>
             ) : (
               <>
@@ -730,7 +792,14 @@ export default function CropScannerPage() {
               </>
             )}
 
+            {modelLoading && (
+              <p className="text-xs text-slate-500">
+                {t("Loading disease model...")}
+              </p>
+            )}
+
             {/* DETECTION RESULT */}
+
             {disease && (
               <div className="mt-3 w-full rounded-2xl bg-[#f4f1e7] p-4 text-left">
                 <div className="flex items-start justify-between gap-3">
@@ -785,6 +854,7 @@ export default function CropScannerPage() {
             )}
 
             {/* AI EXPLANATION */}
+
             {explanation && (
               <div className="mt-2 w-full rounded-2xl bg-white p-4 text-left ring-1 ring-[#e5dfd2]">
                 <div className="flex items-center gap-2">
@@ -821,6 +891,7 @@ export default function CropScannerPage() {
           </div>
 
           {/* RECENT SCANS */}
+
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <p className="font-bold text-[#24352a]">
               {t("Recent Scans")}
