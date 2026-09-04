@@ -722,6 +722,27 @@ Keep the advice simple and practical for an Indian farmer.
           </div>
 
           {/* =================================================
+              YIELD MODEL LOADING MESSAGE
+          ================================================= */}
+
+          {modelLoading && (
+            <div className="mt-4 rounded-xl border border-[#cfe3d1] bg-white/80 px-4 py-3 text-sm text-[#59645c] shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#cbd5cb] border-t-[#2f7357]" />
+
+                <span className="font-medium">
+                  Preparing yield prediction model...
+                </span>
+              </div>
+
+              <p className="mt-1 pl-6 text-xs leading-5 text-slate-500">
+                Preparing the AI model for prediction. This may take a
+                few moments the first time.
+              </p>
+            </div>
+          )}
+
+          {/* =================================================
               SLIDERS + RESULTS
           ================================================= */}
 
