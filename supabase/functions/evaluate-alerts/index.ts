@@ -32,7 +32,7 @@ const MANDI_API_URL =
 // consistently, and dropped the VITE_ prefix — that prefix means
 // "safe to expose in the browser bundle," which does NOT apply to a
 // server-side Edge Function secret like this one.
-const MANDI_API_KEY = Deno.env.get("VITE_MANDI_API_KEY");
+const VITE_MANDI_API_KEY = Deno.env.get("VITE_MANDI_API_KEY");
 
 // ------------------------------------------------------------
 // Firebase configuration
@@ -164,8 +164,8 @@ async function fetchWeatherData(rule: any): Promise<Record<string, number> | nul
 // for a separate one.
 
 async function fetchMandiData(rule: any): Promise<Record<string, number> | null> {
-  if (!MANDI_API_KEY) {
-    throw new Error("MANDI_API_KEY is not configured in Supabase Edge Function secrets.");
+  if (!VITE_MANDI_API_KEY) {
+    throw new Error("VITE_MANDI_API_KEY is not configured in Supabase Edge Function secrets.");
   }
 
   const state = String(rule.farms?.state ?? "").trim();
@@ -182,7 +182,7 @@ async function fetchMandiData(rule: any): Promise<Record<string, number> | null>
   }
 
   const url = new URL(MANDI_API_URL);
-  url.searchParams.set("api-key", MANDI_API_KEY);
+  url.searchParams.set("api-key", VITE_MANDI_API_KEY);
   url.searchParams.set("format", "json");
   url.searchParams.set("limit", "10");
   url.searchParams.set("filters[State]", state);
