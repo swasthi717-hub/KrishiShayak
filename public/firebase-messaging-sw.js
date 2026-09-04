@@ -17,7 +17,7 @@ messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || "KrishiSahayak Alert";
   const options = {
     body: payload.notification?.body || "New agricultural update available.",
-    icon: "/favicon.ico"
+    icon: "/favicon.svg"
   };
   self.registration.showNotification(title, options);
 });

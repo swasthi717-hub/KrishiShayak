@@ -65,10 +65,7 @@ export async function requestAndSaveFCMToken(userId) {
 }
 
 export function listenForForegroundMessages(onNotification) {
-  return onMessage(messaging, (payload) => {
-    onNotification(
-      payload.notification?.title,
-      payload.notification?.body
-    );
+  onMessage(messaging, (payload) => {
+    onNotification(payload.notification?.title, payload.notification?.body);
   });
 }
