@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
 
 import {
   Home,
@@ -32,9 +33,36 @@ const NAV_ITEMS = [
 ];
 
 function Sidebar() {
+  const { farmerData } = useAuth();
+
+  const profile = farmerData?.profile;
+  const farm = farmerData?.farm;
+  const crops = farmerData?.crops || [];
+
+  const initials = profile?.name
+    ? profile.name
+        .split(" ")
+        .map((word) => word[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "F";
+
+  const cropNames =
+    crops.length > 0
+      ? crops.map((crop) => crop.crop_name).join(", ")
+      : "No crops added";
+
+  const location =
+    farm?.district ||
+    profile?.district ||
+    farm?.state ||
+    profile?.state ||
+    "Location unavailable";
+
   return (
     <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-[#e5dfd2] bg-white">
-      
+
       {/* Logo */}
       <div className="flex items-center gap-2 px-5 py-5">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1f5b3d] text-white">
@@ -82,19 +110,28 @@ function Sidebar() {
         )}
       </nav>
 
-      {/* User */}
+      {/* Dynamic Farmer */}
       <div className="m-3 flex items-center gap-3 rounded-xl bg-[#f4f1e7] p-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
-          RP
+
+        {/* Initials */}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
+          {initials}
         </div>
 
-        <div className="leading-tight">
-          <p className="text-sm font-semibold text-[#24352a]">
-            Ramesh Patil
+        {/* Farmer information */}
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-semibold text-[#24352a]">
+            {profile?.name || "Farmer"}
           </p>
 
-          <p className="text-xs text-slate-500">
-            Nashik · Cotton, Wheat
+          <p className="truncate text-xs text-slate-500">
+            {location}
+            {crops.length > 0 && (
+              <>
+                {" · "}
+                {cropNames}
+              </>
+            )}
           </p>
         </div>
       </div>
