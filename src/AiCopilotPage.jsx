@@ -28,9 +28,8 @@ import {
 } from "./services/voiceAssistant";
 
 import {
-  getCurrentLocation,
-} from "./services/location.js";
-
+  getCoordinatesFromLocation,
+} from "./services/geocodingApi.js";
 
 import {
   getWeather,
@@ -40,36 +39,43 @@ import {
   getMandiPrices,
 } from "./services/mandiApi.js";
 
-// =============================================================
-// QUICK QUESTIONS
-// =============================================================
+import { supabase } from "./lib/supabase";
+import { useAuth } from "./context/AuthContext";
+
+/* =============================================================
+ * QUICK QUESTIONS
+ * ============================================================= */
 
 const QUICK_CHIPS = [
   {
     label: "🌾 गेहूं की बुवाई",
-    question: "गेहूं की बुवाई कब और कैसे करें?",
+    question:
+      "गेहूं की बुवाई कब और कैसे करें?",
     language: "Hindi",
   },
   {
     label: "🐛 Bollworm",
-    question: "How can I control bollworm in my crop?",
+    question:
+      "How can I control bollworm in my crop?",
     language: "English",
   },
   {
     label: "💧 पानी प्रबंधन",
-    question: "फसल में पानी कब देना चाहिए?",
+    question:
+      "फसल में पानी कब देना चाहिए?",
     language: "Hindi",
   },
   {
     label: "🌱 Soil health",
-    question: "How can I improve my soil health?",
+    question:
+      "How can I improve my soil health?",
     language: "English",
   },
 ];
 
-// =============================================================
-// SAMPLE QUESTIONS
-// =============================================================
+/* =============================================================
+ * SAMPLE QUESTIONS
+ * ============================================================= */
 
 const SAMPLE_QUESTIONS = [
   {
@@ -94,9 +100,9 @@ const SAMPLE_QUESTIONS = [
   },
 ];
 
-// =============================================================
-// LANGUAGES
-// =============================================================
+/* =============================================================
+ * LANGUAGES
+ * ============================================================= */
 
 const SUPPORTED_LANGUAGES = [
   "Hindi",
@@ -154,9 +160,9 @@ const LANGUAGE_NAMES = {
   en: "English",
 };
 
-// =============================================================
-// COMMODITY DETECTION
-// =============================================================
+/* =============================================================
+ * COMMODITY DETECTION
+ * ============================================================= */
 
 function detectCommodity(question) {
   const text = String(question || "").toLowerCase();
@@ -255,9 +261,9 @@ function detectCommodity(question) {
   return null;
 }
 
-// =============================================================
-// CHECK WHETHER QUESTION NEEDS MANDI DATA
-// =============================================================
+/* =============================================================
+ * CHECK WHETHER QUESTION NEEDS MANDI DATA
+ * ============================================================= */
 
 function needsMandiData(question) {
   const text = String(question || "").toLowerCase();
@@ -285,7 +291,8 @@ function needsMandiData(question) {
       text.includes(keyword)
     );
 
-  const commodity = detectCommodity(question);
+  const commodity =
+    detectCommodity(question);
 
   return (
     hasMandiKeyword ||
@@ -293,9 +300,9 @@ function needsMandiData(question) {
   );
 }
 
-// =============================================================
-// FETCH MANDI DATA
-// =============================================================
+/* =============================================================
+ * FETCH MANDI DATA
+ * ============================================================= */
 
 async function fetchRelevantMandiData(
   question,
@@ -305,7 +312,8 @@ async function fetchRelevantMandiData(
     return null;
   }
 
-  const commodity = detectCommodity(question);
+  const commodity =
+    detectCommodity(question);
 
   if (!commodity) {
     return null;
@@ -318,10 +326,9 @@ async function fetchRelevantMandiData(
     location?.district || "";
 
   try {
-    // ---------------------------------------------------------
-    // First: district + state + commodity
-    // ---------------------------------------------------------
-
+    /*
+     * First try district + state + commodity.
+     */
     let data =
       await getMandiPrices({
         state,
@@ -337,10 +344,9 @@ async function fetchRelevantMandiData(
       return data;
     }
 
-    // ---------------------------------------------------------
-    // Second: state + commodity
-    // ---------------------------------------------------------
-
+    /*
+     * Second try state + commodity.
+     */
     data =
       await getMandiPrices({
         state,
@@ -355,10 +361,9 @@ async function fetchRelevantMandiData(
       return data;
     }
 
-    // ---------------------------------------------------------
-    // Third: commodity only
-    // ---------------------------------------------------------
-
+    /*
+     * Third try commodity only.
+     */
     data =
       await getMandiPrices({
         commodity,
@@ -376,16 +381,18 @@ async function fetchRelevantMandiData(
   }
 }
 
-// =============================================================
-// COMPONENT
-// =============================================================
+/* =============================================================
+ * COMPONENT
+ * ============================================================= */
 
 export default function AiCopilotPage() {
   const routerLocation = useLocation();
 
-  // ===========================================================
-  // CHAT STATE
-  // ===========================================================
+  const { user } = useAuth();
+
+  /* ===========================================================
+   * CHAT STATE
+   * =========================================================== */
 
   const [messages, setMessages] = useState([
     {
@@ -398,9 +405,9 @@ export default function AiCopilotPage() {
 
   const [input, setInput] = useState("");
 
-  // ===========================================================
-  // VOICE STATE
-  // ===========================================================
+  /* ===========================================================
+   * VOICE STATE
+   * =========================================================== */
 
   const [isListening, setIsListening] =
     useState(false);
@@ -411,16 +418,16 @@ export default function AiCopilotPage() {
   const [voiceError, setVoiceError] =
     useState("");
 
-  // ===========================================================
-  // LANGUAGE
-  // ===========================================================
+  /* ===========================================================
+   * LANGUAGE
+   * =========================================================== */
 
   const [selectedLanguage, setSelectedLanguage] =
     useState("English");
 
-  // ===========================================================
-  // LIVE FARMER CONTEXT
-  // ===========================================================
+  /* ===========================================================
+   * LIVE FARMER CONTEXT
+   * =========================================================== */
 
   const [farmerContext, setFarmerContext] =
     useState({
@@ -432,30 +439,99 @@ export default function AiCopilotPage() {
   const [contextLoading, setContextLoading] =
     useState(true);
 
-  // ===========================================================
-  // LOAD LOCATION + WEATHER
-  // ===========================================================
+  /* ===========================================================
+   * LOAD ONBOARDING LOCATION + WEATHER
+   * =========================================================== */
 
   async function loadFarmerContext() {
     try {
       setContextLoading(true);
 
-      const coordinates =
-        await getCurrentLocation();
+      /*
+       * User must be logged in.
+       */
+      if (!user) {
+        throw new Error(
+          "You must be logged in."
+        );
+      }
 
-      const [
-        weather,
-        locationName,
-      ] = await Promise.all([
-        getWeather(
+      /*
+       * -------------------------------------------------------
+       * Get state + district saved during onboarding
+       * -------------------------------------------------------
+       */
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("state, district")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      const state =
+        profile?.state?.trim();
+
+      const district =
+        profile?.district?.trim();
+
+      if (!state || !district) {
+        throw new Error(
+          "Your state and district are not available. Please update your farm location."
+        );
+      }
+
+      console.log(
+        "Farmer onboarding location:",
+        {
+          state,
+          district,
+        }
+      );
+
+      /*
+       * -------------------------------------------------------
+       * Convert onboarding location into coordinates
+       *
+       * IMPORTANT:
+       * This is NOT live GPS.
+       * -------------------------------------------------------
+       */
+
+      const coordinates =
+        await getCoordinatesFromLocation(
+          state,
+          district
+        );
+
+      console.log(
+        "Geocoded farmer location:",
+        coordinates
+      );
+
+      /*
+       * -------------------------------------------------------
+       * Get weather for onboarding location
+       * -------------------------------------------------------
+       */
+
+      const weather =
+        await getWeather(
           coordinates.latitude,
           coordinates.longitude
-        ),
-        getLocationName(
-          coordinates.latitude,
-          coordinates.longitude
-        ),
-      ]);
+        );
+
+      /*
+       * -------------------------------------------------------
+       * Build farmer context
+       * -------------------------------------------------------
+       */
 
       const context = {
         location: {
@@ -465,10 +541,8 @@ export default function AiCopilotPage() {
           longitude:
             coordinates.longitude,
 
-          accuracy:
-            coordinates.accuracy,
-
-          ...locationName,
+          state,
+          district,
         },
 
         weather,
@@ -500,17 +574,19 @@ export default function AiCopilotPage() {
     }
   }
 
-  // ===========================================================
-  // INITIAL CONTEXT LOAD
-  // ===========================================================
+  /* ===========================================================
+   * INITIAL CONTEXT LOAD
+   * =========================================================== */
 
   useEffect(() => {
-    loadFarmerContext();
-  }, []);
+    if (user) {
+      loadFarmerContext();
+    }
+  }, [user]);
 
-  // ===========================================================
-  // SEND MESSAGE
-  // ===========================================================
+  /* ===========================================================
+   * SEND MESSAGE
+   * =========================================================== */
 
   async function sendMessage(
     messageOverride = null
@@ -537,9 +613,9 @@ export default function AiCopilotPage() {
       selectedLanguage
     );
 
-    // ---------------------------------------------------------
-    // Add user message
-    // ---------------------------------------------------------
+    /*
+     * Add user message.
+     */
 
     setMessages((prev) => [
       ...prev,
@@ -554,9 +630,11 @@ export default function AiCopilotPage() {
     setIsThinking(true);
 
     try {
-      // -------------------------------------------------------
-      // Ensure location/weather are available
-      // -------------------------------------------------------
+      /*
+       * -------------------------------------------------------
+       * Ensure onboarding location/weather are available
+       * -------------------------------------------------------
+       */
 
       let context = farmerContext;
 
@@ -568,9 +646,23 @@ export default function AiCopilotPage() {
           await loadFarmerContext();
       }
 
-      // -------------------------------------------------------
-      // Fetch mandi data only when needed
-      // -------------------------------------------------------
+      /*
+       * -------------------------------------------------------
+       * If onboarding location could not be loaded
+       * -------------------------------------------------------
+       */
+
+      if (!context?.location) {
+        throw new Error(
+          "Your onboarding location could not be loaded. Please check your state and district in your profile."
+        );
+      }
+
+      /*
+       * -------------------------------------------------------
+       * Fetch mandi data only when needed
+       * -------------------------------------------------------
+       */
 
       const mandiData =
         await fetchRelevantMandiData(
@@ -592,9 +684,11 @@ export default function AiCopilotPage() {
         finalContext
       );
 
-      // -------------------------------------------------------
-      // Ask Gemini
-      // -------------------------------------------------------
+      /*
+       * -------------------------------------------------------
+       * Ask Gemini
+       * -------------------------------------------------------
+       */
 
       const languageCode =
         LANGUAGE_PROMPT_CODES[
@@ -624,9 +718,11 @@ export default function AiCopilotPage() {
         safeAnswer
       );
 
-      // -------------------------------------------------------
-      // Add AI response
-      // -------------------------------------------------------
+      /*
+       * -------------------------------------------------------
+       * Add AI response
+       * -------------------------------------------------------
+       */
 
       setMessages((prev) => [
         ...prev,
@@ -637,9 +733,11 @@ export default function AiCopilotPage() {
         },
       ]);
 
-      // -------------------------------------------------------
-      // Text-to-speech
-      // -------------------------------------------------------
+      /*
+       * -------------------------------------------------------
+       * Text-to-speech
+       * -------------------------------------------------------
+       */
 
       try {
         const speechLanguage =
@@ -689,9 +787,9 @@ export default function AiCopilotPage() {
     }
   }
 
-  // ===========================================================
-  // DASHBOARD → COPILOT PROMPT
-  // ===========================================================
+  /* ===========================================================
+   * DASHBOARD → COPILOT PROMPT
+   * =========================================================== */
 
   useEffect(() => {
     const prompt =
@@ -706,8 +804,11 @@ export default function AiCopilotPage() {
       prompt
     );
 
-    // Clear navigation state so the same
-    // prompt does not execute again.
+    /*
+     * Clear navigation state so the same
+     * prompt does not execute again.
+     */
+
     window.history.replaceState(
       {},
       document.title,
@@ -716,19 +817,23 @@ export default function AiCopilotPage() {
 
     sendMessage(prompt);
 
-    // This effect intentionally responds
-    // to navigation state.
+    /*
+     * This effect intentionally responds
+     * to navigation state.
+     */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routerLocation.state?.prompt]);
 
-  // ===========================================================
-  // MICROPHONE
-  // ===========================================================
+  /* ===========================================================
+   * MICROPHONE
+   * =========================================================== */
 
   const handleMicClick = () => {
-    // ---------------------------------------------------------
-    // Stop current listening
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * Stop current listening
+     * ---------------------------------------------------------
+     */
 
     if (isListening) {
       console.log(
@@ -740,15 +845,19 @@ export default function AiCopilotPage() {
       return;
     }
 
-    // ---------------------------------------------------------
-    // Clear old voice error
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * Clear old voice error
+     * ---------------------------------------------------------
+     */
 
     setVoiceError("");
 
-    // ---------------------------------------------------------
-    // Select browser language
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * Select browser language
+     * ---------------------------------------------------------
+     */
 
     const speechLanguage =
       LANGUAGE_CODES[
@@ -765,16 +874,18 @@ export default function AiCopilotPage() {
       selectedLanguage
     );
 
-    // ---------------------------------------------------------
-    // Start recognition
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * Start recognition
+     * ---------------------------------------------------------
+     */
 
     startListening({
       language: speechLanguage,
 
-      // -------------------------------------------------------
-      // Recognition started
-      // -------------------------------------------------------
+      /*
+       * Recognition started
+       */
 
       onStart: () => {
         console.log(
@@ -786,9 +897,9 @@ export default function AiCopilotPage() {
         setIsListening(true);
       },
 
-      // -------------------------------------------------------
-      // Transcript received
-      // -------------------------------------------------------
+      /*
+       * Transcript received
+       */
 
       onResult: (spokenText) => {
         const text =
@@ -805,22 +916,30 @@ export default function AiCopilotPage() {
           console.warn(
             "Speech recognition returned an empty transcript."
           );
+
           return;
         }
 
-        // Show transcript in the input.
+        /*
+         * Show transcript in input.
+         */
+
         setInput(text);
 
-        // IMPORTANT:
-        // Send transcript directly rather than
-        // calling sendMessage() with React state,
-        // because state updates are asynchronous.
+        /*
+         * IMPORTANT:
+         *
+         * Send transcript directly rather than
+         * calling sendMessage() with React state,
+         * because state updates are asynchronous.
+         */
+
         sendMessage(text);
       },
 
-      // -------------------------------------------------------
-      // Recognition ended
-      // -------------------------------------------------------
+      /*
+       * Recognition ended
+       */
 
       onEnd: () => {
         console.log(
@@ -830,9 +949,9 @@ export default function AiCopilotPage() {
         setIsListening(false);
       },
 
-      // -------------------------------------------------------
-      // Recognition error
-      // -------------------------------------------------------
+      /*
+       * Recognition error
+       */
 
       onError: (errorMessage) => {
         console.error(
@@ -861,9 +980,9 @@ export default function AiCopilotPage() {
     });
   };
 
-  // ===========================================================
-  // SPEAK INDIVIDUAL AI MESSAGE
-  // ===========================================================
+  /* ===========================================================
+   * SPEAK INDIVIDUAL AI MESSAGE
+   * =========================================================== */
 
   const handleSpeak = (text) => {
     if (!text) {
@@ -893,11 +1012,13 @@ export default function AiCopilotPage() {
     }
   };
 
-  // ===========================================================
-  // LANGUAGE CHANGE
-  // ===========================================================
+  /* ===========================================================
+   * LANGUAGE CHANGE
+   * =========================================================== */
 
-  const handleLanguageChange = (event) => {
+  const handleLanguageChange = (
+    event
+  ) => {
     const newLanguage =
       event.target.value;
 
@@ -906,10 +1027,16 @@ export default function AiCopilotPage() {
       newLanguage
     );
 
-    // Stop current TTS
+    /*
+     * Stop current TTS
+     */
+
     stopSpeaking();
 
-    // Stop recognition if active
+    /*
+     * Stop recognition if active
+     */
+
     if (isListening) {
       stopListening();
       setIsListening(false);
@@ -919,9 +1046,9 @@ export default function AiCopilotPage() {
     setSelectedLanguage(newLanguage);
   };
 
-  // ===========================================================
-  // ENTER KEY
-  // ===========================================================
+  /* ===========================================================
+   * ENTER KEY
+   * =========================================================== */
 
   const handleKeyDown = (event) => {
     if (
@@ -933,9 +1060,9 @@ export default function AiCopilotPage() {
     }
   };
 
-  // ===========================================================
-  // GET LANGUAGE NAME
-  // ===========================================================
+  /* ===========================================================
+   * GET LANGUAGE NAME
+   * =========================================================== */
 
   const getLanguageName = (code) => {
     return (
@@ -944,9 +1071,9 @@ export default function AiCopilotPage() {
     );
   };
 
-  // ===========================================================
-  // UI
-  // ===========================================================
+  /* ===========================================================
+   * UI
+   * =========================================================== */
 
   return (
     <Layout title="AI Copilot">
@@ -984,7 +1111,6 @@ export default function AiCopilotPage() {
                   </p>
 
                 </div>
-
               </div>
 
               {/* LANGUAGE SELECTOR */}
@@ -1001,7 +1127,9 @@ export default function AiCopilotPage() {
                 <select
                   id="copilot-language"
                   value={selectedLanguage}
-                  onChange={handleLanguageChange}
+                  onChange={
+                    handleLanguageChange
+                  }
                   className="rounded-full border border-[#e5dfd2] bg-white px-3 py-2 text-sm font-medium text-[#24352a] outline-none focus:border-[#2f7357]"
                 >
                   {SUPPORTED_LANGUAGES.map(
@@ -1021,21 +1149,23 @@ export default function AiCopilotPage() {
             </div>
 
             {/* =================================================
-                LIVE CONTEXT STATUS
+                LOCATION / CONTEXT STATUS
             ================================================= */}
 
             <div className="mt-3 text-xs text-slate-400">
-
               {contextLoading
-                ? "Loading your location and live weather..."
+                ? "Loading your onboarding location and live weather..."
                 : farmerContext?.location
-                  ? `Using live data for ${
-                      farmerContext.location.city ||
+                  ? `Using onboarding location: ${
+                      farmerContext.location.district ||
                       farmerContext.location.state ||
                       "your location"
+                    }${
+                      farmerContext.location.state
+                        ? `, ${farmerContext.location.state}`
+                        : ""
                     }`
-                  : "Live location unavailable"}
-
+                  : "Onboarding location unavailable"}
             </div>
 
           </div>
@@ -1050,10 +1180,14 @@ export default function AiCopilotPage() {
               Disclaimer:
             </span>{" "}
 
-            AI-generated guidance is for informational purposes
-            only. Please do not follow recommendations blindly;
-            consult a qualified agricultural expert or relevant
-            professional before taking major farming decisions.
+            AI-generated guidance is for
+            informational purposes only.
+            Please do not follow
+            recommendations blindly;
+            consult a qualified
+            agricultural expert or relevant
+            professional before taking major
+            farming decisions.
 
           </div>
 
@@ -1062,7 +1196,6 @@ export default function AiCopilotPage() {
           ================================================= */}
 
           <div className="mt-5 flex flex-wrap gap-2">
-
             {QUICK_CHIPS.map(
               (chip) => (
                 <button
@@ -1084,7 +1217,6 @@ export default function AiCopilotPage() {
                 </button>
               )
             )}
-
           </div>
 
           {/* =================================================
@@ -1102,7 +1234,8 @@ export default function AiCopilotPage() {
               {messages.map(
                 (message, index) => {
                   const isUser =
-                    message.sender === "user";
+                    message.sender ===
+                    "user";
 
                   return (
                     <div
@@ -1242,7 +1375,9 @@ export default function AiCopilotPage() {
                   <textarea
                     value={input}
                     onChange={(event) =>
-                      setInput(event.target.value)
+                      setInput(
+                        event.target.value
+                      )
                     }
                     onKeyDown={handleKeyDown}
                     placeholder={`Ask KrishiSahayak in ${selectedLanguage}...`}
@@ -1276,7 +1411,9 @@ export default function AiCopilotPage() {
 
                   <button
                     type="button"
-                    onClick={handleMicClick}
+                    onClick={
+                      handleMicClick
+                    }
                     disabled={isThinking}
                     className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                       isListening
@@ -1305,21 +1442,17 @@ export default function AiCopilotPage() {
                   </button>
 
                   {isListening && (
-
                     <span className="text-sm text-red-600">
                       Listening... speak now
                     </span>
-
                   )}
 
                   {!isListening &&
                     !voiceError && (
-
                       <span className="text-xs text-gray-500">
                         Tap Speak and ask your farming question.
                       </span>
-
-                  )}
+                    )}
 
                 </div>
 
@@ -1327,7 +1460,9 @@ export default function AiCopilotPage() {
 
                 <button
                   type="button"
-                  onClick={stopSpeaking}
+                  onClick={
+                    stopSpeaking
+                  }
                   className="self-start text-sm font-medium text-gray-500 hover:text-gray-700"
                 >
                   Stop voice response
@@ -1362,7 +1497,6 @@ export default function AiCopilotPage() {
               />
 
               Sample Questions
-
             </p>
 
             <div className="mt-3 space-y-2">
