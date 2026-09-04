@@ -30,38 +30,59 @@ async function callGemini(prompt) {
   }
 
   try {
-    const { data, error } = await supabase.functions.invoke(
-      "ask-gemini",
-      {
-        body: {
-          prompt,
-        },
-      }
-    );
+    const { data, error } =
+      await supabase.functions.invoke(
+        "ask-gemini",
+        {
+          body: {
+            prompt,
+          },
+        }
+      );
 
     if (error) {
-      console.error("Gemini Edge Function error:", error);
+      console.error(
+        "Gemini Edge Function error:",
+        error
+      );
+
       throw new Error(
-        error.message || "Unable to connect to Gemini"
+        error.message ||
+          "Unable to connect to Gemini"
       );
     }
 
     if (!data) {
-      throw new Error("Gemini returned no data");
+      throw new Error(
+        "Gemini returned no data"
+      );
     }
 
     if (data.error) {
       throw new Error(data.error);
     }
 
-    if (!data.text || typeof data.text !== "string") {
-      console.error("Invalid Gemini response:", data);
-      throw new Error("Gemini returned an empty response");
+    if (
+      !data.text ||
+      typeof data.text !== "string"
+    ) {
+      console.error(
+        "Invalid Gemini response:",
+        data
+      );
+
+      throw new Error(
+        "Gemini returned an empty response"
+      );
     }
 
     return data.text.trim();
   } catch (error) {
-    console.error("CALL GEMINI FAILED:", error);
+    console.error(
+      "CALL GEMINI FAILED:",
+      error
+    );
+
     throw error;
   }
 }
@@ -70,8 +91,13 @@ async function callGemini(prompt) {
 // LANGUAGE HELPER
 // =============================================================
 
-function getLanguageName(languageCode = "en") {
-  return LANGUAGE_NAMES[languageCode] || "English";
+function getLanguageName(
+  languageCode = "en"
+) {
+  return (
+    LANGUAGE_NAMES[languageCode] ||
+    "English"
+  );
 }
 
 // =============================================================
@@ -83,7 +109,8 @@ export async function getDiseaseExplanation(
   cropName = "",
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
   const prompt = `
 You are KrishiShayak, a friendly farming assistant helping Indian farmers.
@@ -115,60 +142,316 @@ Keep the answer short and easy to understand.
 }
 
 // =============================================================
+// WEATHER CONTEXT FORMATTER
+// =============================================================
+
+function createWeatherContext(weather) {
+  if (!weather) {
+    return {
+      available: false,
+      message:
+        "Live weather data is not available.",
+    };
+  }
+
+  const current = weather?.current || {};
+  const daily = weather?.daily || {};
+
+  const forecast = [];
+
+  const dates = daily?.time || [];
+
+  for (
+    let i = 0;
+    i < Math.min(dates.length, 7);
+    i++
+  ) {
+    forecast.push({
+      date: dates[i],
+
+      maxTemperature:
+        daily?.temperature_2m_max?.[i] ??
+        null,
+
+      minTemperature:
+        daily?.temperature_2m_min?.[i] ??
+        null,
+
+      precipitationProbability:
+        daily
+          ?.precipitation_probability_max?.[
+          i
+        ] ?? null,
+
+      precipitation:
+        daily?.precipitation_sum?.[i] ??
+        null,
+
+      weatherCode:
+        daily?.weather_code?.[i] ??
+        null,
+    });
+  }
+
+  return {
+    available: true,
+
+    source: "Open-Meteo",
+
+    timezone:
+      weather?.timezone || null,
+
+    current: {
+      temperature:
+        current?.temperature_2m ?? null,
+
+      apparentTemperature:
+        current?.apparent_temperature ??
+        null,
+
+      humidity:
+        current?.relative_humidity_2m ??
+        null,
+
+      precipitation:
+        current?.precipitation ?? null,
+
+      windSpeed:
+        current?.wind_speed_10m ?? null,
+
+      weatherCode:
+        current?.weather_code ?? null,
+    },
+
+    forecast,
+  };
+}
+
+// =============================================================
+// MANDI CONTEXT FORMATTER
+// =============================================================
+
+function createMandiContext(mandi) {
+  if (!mandi) {
+    return {
+      available: false,
+      message:
+        "No mandi data was requested for this question.",
+    };
+  }
+
+  const records = Array.isArray(
+    mandi?.records
+  )
+    ? mandi.records
+    : [];
+
+  if (records.length === 0) {
+    return {
+      available: false,
+      message:
+        "The mandi API returned no matching records.",
+    };
+  }
+
+  return {
+    available: true,
+
+    source:
+      "data.gov.in agricultural mandi data",
+
+    totalRecords:
+      mandi?.total ?? records.length,
+
+    records: records.slice(0, 30).map(
+      (record) => ({
+        state:
+          record?.state || "",
+
+        district:
+          record?.district || "",
+
+        market:
+          record?.market || "",
+
+        commodity:
+          record?.commodity || "",
+
+        variety:
+          record?.variety || "",
+
+        grade:
+          record?.grade || "",
+
+        minPrice:
+          record?.min_price ?? null,
+
+        maxPrice:
+          record?.max_price ?? null,
+
+        modalPrice:
+          record?.modal_price ?? null,
+
+        arrivalDate:
+          record?.arrival_date || "",
+      })
+    ),
+  };
+}
+
+// =============================================================
 // AI COPILOT CHAT
 // =============================================================
 
 export async function getChatResponse(
   question,
-  preferredLanguage = "en"
+  preferredLanguage = "en",
+  context = {}
 ) {
   if (!question?.trim()) {
-    throw new Error("Question is required");
+    throw new Error(
+      "Question is required"
+    );
   }
 
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
+
+  const weatherContext =
+    createWeatherContext(
+      context?.weather
+    );
+
+  const mandiContext =
+    createMandiContext(
+      context?.mandi
+    );
+
+  const locationContext =
+    context?.location || {};
 
   const prompt = `
 You are KrishiShayak, a friendly farming assistant helping Indian farmers.
 
-The farmer's preferred language is ${language}.
+Your job is to answer the farmer using the REAL DATA supplied below.
 
-IMPORTANT LANGUAGE RULE:
+============================================================
+FARMER QUESTION
+============================================================
+
+${question}
+
+============================================================
+FARMER LOCATION
+============================================================
+
+${JSON.stringify(
+  locationContext,
+  null,
+  2
+)}
+
+============================================================
+LIVE WEATHER DATA
+============================================================
+
+${JSON.stringify(
+  weatherContext,
+  null,
+  2
+)}
+
+============================================================
+LIVE MANDI DATA
+============================================================
+
+${JSON.stringify(
+  mandiContext,
+  null,
+  2
+)}
+
+============================================================
+LANGUAGE
+============================================================
+
 Respond ONLY in ${language}.
-Do not switch to English unless the farmer explicitly asks for English.
 
-The farmer may ask about:
-- Crops
-- Diseases
-- Pests
-- Weather
-- Irrigation
-- Fertilizer
-- Yield
-- Farming practices
-- Market prices
-- Mandi-related questions
-- General agricultural problems
+============================================================
+IMPORTANT DATA RULES
+============================================================
 
-Keep answers:
+1. The weather information above comes from a live weather API.
+
+2. The mandi information above comes from the supplied mandi API data.
+
+3. NEVER invent a weather value.
+
+4. NEVER invent a mandi price.
+
+5. NEVER claim that a future market price is known.
+
+6. If mandi data is unavailable, explicitly say that current mandi data was not available.
+
+7. If weather data is unavailable, explicitly say that live weather data was not available.
+
+8. Use the farmer's location when it is relevant.
+
+9. If the farmer asks "today", use the supplied current/live data rather than making up information.
+
+10. If the farmer asks about selling a crop, use the supplied mandi records when available.
+
+11. If several mandi records are available, compare their prices and markets rather than choosing a market without evidence.
+
+12. Do not confuse min price, max price, and modal price.
+
+13. Do not invent pesticide names or dosages.
+
+14. If chemical treatment is discussed, tell the farmer to follow the product label and consult a local agricultural officer.
+
+15. Do not present an AI disease diagnosis as completely certain.
+
+16. If there is insufficient information, say so instead of making up facts.
+
+============================================================
+ANSWER STYLE
+============================================================
+
+Keep the answer:
 - Simple
 - Practical
 - Short
+- Farmer-friendly
 - Easy to understand
-- Suitable for a farmer without technical knowledge
 
-Important:
-- Do not invent weather information.
-- Do not invent market prices.
-- Do not invent disease diagnoses.
-- Do not invent pesticide dosages.
-- If a chemical treatment is discussed, tell the farmer to follow the product label and consult a local agricultural officer.
-- If you do not have enough information, say so instead of making up facts.
+Use bullet points when helpful.
 
-If the question is not related to farming, politely explain that KrishiShayak is mainly designed for farming-related questions.
+If the question is unrelated to farming, politely explain that KrishiShayak is mainly designed for farming-related questions.
 
-Farmer's question:
-${question}
+============================================================
+EXAMPLE OF HOW TO USE DATA
+============================================================
+
+If the farmer asks:
+"आज बारिश होगी क्या?"
+
+Use the supplied weather forecast.
+
+If the farmer asks:
+"आज प्याज बेचना सही है?"
+
+Use the supplied onion mandi records and their actual prices.
+
+If the farmer asks:
+"मेरे खेत में अभी क्या करना चाहिए?"
+
+Use the farmer's location and current/forecast weather when relevant.
+
+Do NOT make up missing information.
+
+============================================================
+FINAL ANSWER
+============================================================
 `;
 
   return callGemini(prompt);
@@ -181,19 +464,38 @@ ${question}
 function identifyRisks(weatherData) {
   const risks = [];
 
-  const rainProbability = Number(weatherData?.rainProbability);
-  const humidity = Number(weatherData?.humidity);
-  const temperature = Number(weatherData?.temperature);
+  const rainProbability = Number(
+    weatherData?.rainProbability
+  );
 
-  if (Number.isFinite(rainProbability) && rainProbability > 70) {
+  const humidity = Number(
+    weatherData?.humidity
+  );
+
+  const temperature = Number(
+    weatherData?.temperature
+  );
+
+  if (
+    Number.isFinite(rainProbability) &&
+    rainProbability > 70
+  ) {
     risks.push("heavy_rain");
   }
 
-  if (Number.isFinite(humidity) && humidity > 80) {
-    risks.push("high_humidity_fungal_risk");
+  if (
+    Number.isFinite(humidity) &&
+    humidity > 80
+  ) {
+    risks.push(
+      "high_humidity_fungal_risk"
+    );
   }
 
-  if (Number.isFinite(temperature) && temperature > 38) {
+  if (
+    Number.isFinite(temperature) &&
+    temperature > 38
+  ) {
     risks.push("heat_stress");
   }
 
@@ -206,9 +508,11 @@ export async function getActionPlan(
   activeAlerts = [],
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
-  const risks = identifyRisks(weatherData);
+  const risks =
+    identifyRisks(weatherData);
 
   const cropList = Array.isArray(crops)
     ? crops
@@ -236,9 +540,12 @@ Farmer's crops:
 ${cropList || "No crops provided"}
 
 Active alerts:
-${Array.isArray(activeAlerts)
-  ? activeAlerts.join(", ") || "none"
-  : "none"}
+${
+  Array.isArray(activeAlerts)
+    ? activeAlerts.join(", ") ||
+      "none"
+    : "none"
+}
 
 Do not invent weather data, crop information, prices, pests, or risks.
 
@@ -281,7 +588,8 @@ Include one cropCard for every crop provided.
 Keep all text inside the JSON in ${language}.
 `;
 
-  const rawText = await callGemini(prompt);
+  const rawText =
+    await callGemini(prompt);
 
   const cleanedText = rawText
     .replace(/```json/gi, "")
@@ -291,8 +599,14 @@ Keep all text inside the JSON in ${language}.
   try {
     return JSON.parse(cleanedText);
   } catch (error) {
-    console.error("Invalid Action Plan JSON:", cleanedText);
-    throw new Error("Gemini returned invalid Action Plan data");
+    console.error(
+      "Invalid Action Plan JSON:",
+      cleanedText
+    );
+
+    throw new Error(
+      "Gemini returned invalid Action Plan data"
+    );
   }
 }
 
@@ -301,20 +615,36 @@ Keep all text inside the JSON in ${language}.
 // =============================================================
 
 function calculateTrend(priceHistory) {
-  if (!Array.isArray(priceHistory) || priceHistory.length < 2) {
+  if (
+    !Array.isArray(priceHistory) ||
+    priceHistory.length < 2
+  ) {
     return "stable";
   }
 
-  const first = Number(priceHistory[0]);
-  const last = Number(priceHistory[priceHistory.length - 1]);
+  const first = Number(
+    priceHistory[0]
+  );
 
-  if (!Number.isFinite(first) || !Number.isFinite(last) || first === 0) {
+  const last = Number(
+    priceHistory[
+      priceHistory.length - 1
+    ]
+  );
+
+  if (
+    !Number.isFinite(first) ||
+    !Number.isFinite(last) ||
+    first === 0
+  ) {
     return "stable";
   }
 
-  const change = ((last - first) / first) * 100;
+  const change =
+    ((last - first) / first) * 100;
 
   if (change > 3) return "rising";
+
   if (change < -3) return "falling";
 
   return "stable";
@@ -324,23 +654,33 @@ export async function getMarketRecommendation(
   crops = [],
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
-  const safeCrops = Array.isArray(crops) ? crops : [];
+  const safeCrops = Array.isArray(crops)
+    ? crops
+    : [];
 
   const cropData = safeCrops
     .map((crop) => {
-      const history = Array.isArray(crop?.priceHistory)
-        ? crop.priceHistory
-        : [];
+      const history =
+        Array.isArray(
+          crop?.priceHistory
+        )
+          ? crop.priceHistory
+          : [];
 
-      const trend = calculateTrend(history);
+      const trend =
+        calculateTrend(history);
 
       return `
 Crop: ${crop?.name || "Unknown"}
 Mandi: ${crop?.mandiName || "Unknown"}
 Current price: ₹${Number(crop?.currentPrice) || 0}/quintal
-Last 4 weeks: ${history.join(", ") || "No history"}
+Last 4 weeks: ${
+        history.join(", ") ||
+        "No history"
+      }
 Calculated trend: ${trend}
 `;
     })
@@ -379,7 +719,8 @@ The recommendation can be either:
 Keep all text inside the JSON in ${language}.
 `;
 
-  const rawText = await callGemini(prompt);
+  const rawText =
+    await callGemini(prompt);
 
   const cleanedText = rawText
     .replace(/```json/gi, "")
@@ -410,7 +751,8 @@ export async function getYieldExplanation(
   inputs = {},
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
   const prompt = `
 You are KrishiShayak, a farming assistant helping Indian farmers understand a yield prediction.

@@ -1,14 +1,19 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
-import { corsHeaders } from "npm:@supabase/supabase-js@^2/cors";
 
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+import {
+  corsHeaders,
+} from "npm:@supabase/supabase-js@^2/cors";
 
-const GEMINI_MODEL = "gemini-3.6-flash";
+const GEMINI_API_KEY =
+  Deno.env.get("GEMINI_API_KEY");
+
+const GEMINI_MODEL =
+  "gemini-3.6-flash";
 
 Deno.serve(async (req) => {
-  // -----------------------------------------------------------
+  // =========================================================
   // CORS
-  // -----------------------------------------------------------
+  // =========================================================
 
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -16,9 +21,9 @@ Deno.serve(async (req) => {
     });
   }
 
-  // -----------------------------------------------------------
+  // =========================================================
   // METHOD
-  // -----------------------------------------------------------
+  // =========================================================
 
   if (req.method !== "POST") {
     return new Response(
@@ -29,42 +34,51 @@ Deno.serve(async (req) => {
         status: 405,
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
       }
     );
   }
 
-  // -----------------------------------------------------------
+  // =========================================================
   // API KEY
-  // -----------------------------------------------------------
+  // =========================================================
 
   if (!GEMINI_API_KEY) {
-    console.error("GEMINI_API_KEY is missing");
+    console.error(
+      "GEMINI_API_KEY is missing"
+    );
 
     return new Response(
       JSON.stringify({
-        error: "Gemini API key is not configured",
+        error:
+          "Gemini API key is not configured",
       }),
       {
         status: 500,
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
       }
     );
   }
 
   try {
-    // ---------------------------------------------------------
+    // =======================================================
     // REQUEST BODY
-    // ---------------------------------------------------------
+    // =======================================================
 
     const body = await req.json();
+
     const prompt = body?.prompt;
 
-    if (!prompt || typeof prompt !== "string") {
+    if (
+      !prompt ||
+      typeof prompt !== "string"
+    ) {
       return new Response(
         JSON.stringify({
           error: "Prompt is required",
@@ -73,15 +87,16 @@ Deno.serve(async (req) => {
           status: 400,
           headers: {
             ...corsHeaders,
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
         }
       );
     }
 
-    // ---------------------------------------------------------
+    // =======================================================
     // GEMINI REQUEST
-    // ---------------------------------------------------------
+    // =======================================================
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
@@ -89,8 +104,11 @@ Deno.serve(async (req) => {
         method: "POST",
 
         headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": GEMINI_API_KEY,
+          "Content-Type":
+            "application/json",
+
+          "x-goog-api-key":
+            GEMINI_API_KEY,
         },
 
         body: JSON.stringify({
@@ -107,14 +125,18 @@ Deno.serve(async (req) => {
       }
     );
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
-    // ---------------------------------------------------------
+    // =======================================================
     // GEMINI ERROR
-    // ---------------------------------------------------------
+    // =======================================================
 
     if (!response.ok) {
-      console.error("Gemini API error:", data);
+      console.error(
+        "Gemini API error:",
+        data
+      );
 
       return new Response(
         JSON.stringify({
@@ -123,47 +145,61 @@ Deno.serve(async (req) => {
             "Gemini request failed",
         }),
         {
-          status: response.status >= 400 && response.status < 500
-            ? response.status
-            : 500,
+          status:
+            response.status >= 400 &&
+            response.status < 500
+              ? response.status
+              : 500,
+
           headers: {
             ...corsHeaders,
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
         }
       );
     }
 
-    // ---------------------------------------------------------
-    // EXTRACT TEXT
-    // ---------------------------------------------------------
+    // =======================================================
+    // EXTRACT RESPONSE TEXT
+    // =======================================================
 
     const text =
       data?.candidates?.[0]?.content?.parts
-        ?.map((part: { text?: string }) => part?.text || "")
+        ?.map(
+          (part: {
+            text?: string;
+          }) =>
+            part?.text || ""
+        )
         .join("")
         .trim() || "";
 
     if (!text) {
-      console.error("Gemini returned no text:", data);
+      console.error(
+        "Gemini returned no text:",
+        data
+      );
 
       return new Response(
         JSON.stringify({
-          error: "Gemini returned an empty response",
+          error:
+            "Gemini returned an empty response",
         }),
         {
           status: 502,
           headers: {
             ...corsHeaders,
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
         }
       );
     }
 
-    // ---------------------------------------------------------
+    // =======================================================
     // SUCCESS
-    // ---------------------------------------------------------
+    // =======================================================
 
     return new Response(
       JSON.stringify({
@@ -173,12 +209,16 @@ Deno.serve(async (req) => {
         status: 200,
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
       }
     );
   } catch (error) {
-    console.error("ask-gemini error:", error);
+    console.error(
+      "ask-gemini error:",
+      error
+    );
 
     return new Response(
       JSON.stringify({
@@ -191,7 +231,8 @@ Deno.serve(async (req) => {
         status: 500,
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
       }
     );

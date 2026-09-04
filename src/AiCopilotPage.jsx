@@ -1,4 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, {
+  useEffect,
+  useState,
+} from "react";
+
 import {
   Mic,
   Volume2,
@@ -11,7 +15,9 @@ import { useLocation } from "react-router-dom";
 
 import Layout from "./Layout.jsx";
 
-import { getChatResponse } from "./services/gemini.js";
+import {
+  getChatResponse,
+} from "./services/gemini.js";
 
 import {
   startListening,
@@ -19,6 +25,26 @@ import {
   speakResponse,
   stopSpeaking,
 } from "./services/voiceAssistant.js";
+
+import {
+  getCurrentLocation,
+} from "./services/location.js";
+
+import {
+  getLocationName,
+} from "./services/locationName.js";
+
+import {
+  getWeather,
+} from "./services/weatherApi.js";
+
+import {
+  getMandiPrices,
+} from "./services/mandiApi.js";
+
+// =============================================================
+// QUICK QUESTIONS
+// =============================================================
 
 const QUICK_CHIPS = [
   "कीट नियंत्रण",
@@ -37,6 +63,10 @@ const SAMPLE_QUESTIONS = [
   "Which pesticide for bollworm?",
   "Best mandi for onion today?",
 ];
+
+// =============================================================
+// LANGUAGES
+// =============================================================
 
 const SUPPORTED_LANGUAGES = [
   "हिंदी",
@@ -71,7 +101,7 @@ const LANGUAGE_PROMPT_CODES = {
   தமிழ்: "ta",
   తెలుగు: "te",
   ಕನ್ನಡ: "kn",
-  ਪੰਜਾਬી: "pa",
+  ਪੰਜਾਬੀ: "pa",
   বাংলা: "bn",
   ଓଡ଼ିଆ: "or",
   ગુજરાતી: "gu",
@@ -79,37 +109,382 @@ const LANGUAGE_PROMPT_CODES = {
   English: "en",
 };
 
-export default function AiCopilotPage() {
-  const location = useLocation();
+// =============================================================
+// COMMODITY DETECTION
+// =============================================================
 
-  const [messages, setMessages] = useState([
+function detectCommodity(question) {
+  const text =
+    String(question || "")
+      .toLowerCase();
+
+  const commodities = [
     {
-      sender: "ai",
-      text:
-        "नमस्ते! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
-      time: "Now",
+      names: [
+        "onion",
+        "प्याज",
+        "कांदा",
+      ],
+      value: "Onion",
     },
-  ]);
 
-  const [input, setInput] = useState("");
-  const [isListening, setIsListening] = useState(false);
-  const [isThinking, setIsThinking] = useState(false);
+    {
+      names: [
+        "tomato",
+        "टमाटर",
+        "टोमॅटो",
+      ],
+      value: "Tomato",
+    },
+
+    {
+      names: [
+        "wheat",
+        "गेहूं",
+        "गहू",
+      ],
+      value: "Wheat",
+    },
+
+    {
+      names: [
+        "rice",
+        "धान",
+        "चावल",
+        "तांदूळ",
+      ],
+      value: "Rice",
+    },
+
+    {
+      names: [
+        "cotton",
+        "कपास",
+        "कापूस",
+      ],
+      value: "Cotton",
+    },
+
+    {
+      names: [
+        "potato",
+        "आलू",
+        "बटाटा",
+      ],
+      value: "Potato",
+    },
+
+    {
+      names: [
+        "soybean",
+        "सोयाबीन",
+      ],
+      value: "Soybean",
+    },
+
+    {
+      names: [
+        "maize",
+        "corn",
+        "मक्का",
+      ],
+      value: "Maize",
+    },
+
+    {
+      names: [
+        "sugarcane",
+        "गन्ना",
+      ],
+      value: "Sugarcane",
+    },
+
+    {
+      names: [
+        "mustard",
+        "सरसों",
+      ],
+      value: "Mustard",
+    },
+  ];
+
+  for (const commodity of commodities) {
+    if (
+      commodity.names.some((name) =>
+        text.includes(name)
+      )
+    ) {
+      return commodity.value;
+    }
+  }
+
+  return null;
+}
+
+// =============================================================
+// CHECK WHETHER QUESTION NEEDS MANDI DATA
+// =============================================================
+
+function needsMandiData(question) {
+  const text =
+    String(question || "")
+      .toLowerCase();
+
+  const mandiKeywords = [
+    "mandi",
+    "market",
+    "price",
+    "prices",
+    "rate",
+    "sell",
+    "selling",
+    "बेचना",
+    "बेचें",
+    "बेच",
+    "भाव",
+    "कीमत",
+    "मंडी",
+    "बाजार",
+    "दर",
+  ];
+
+  const hasMandiKeyword =
+    mandiKeywords.some((keyword) =>
+      text.includes(keyword)
+    );
+
+  const commodity =
+    detectCommodity(question);
+
+  return (
+    hasMandiKeyword ||
+    Boolean(commodity)
+  );
+}
+
+// =============================================================
+// FETCH MANDI DATA
+// =============================================================
+
+async function fetchRelevantMandiData(
+  question,
+  location
+) {
+  if (!needsMandiData(question)) {
+    return null;
+  }
+
+  const commodity =
+    detectCommodity(question);
+
+  if (!commodity) {
+    return null;
+  }
+
+  const state =
+    location?.state || "";
+
+  const district =
+    location?.district || "";
+
+  try {
+    // ---------------------------------------------------------
+    // First: try district + state + commodity
+    // ---------------------------------------------------------
+
+    let data =
+      await getMandiPrices({
+        state,
+        district,
+        commodity,
+        limit: 30,
+      });
+
+    if (
+      Array.isArray(data?.records) &&
+      data.records.length > 0
+    ) {
+      return data;
+    }
+
+    // ---------------------------------------------------------
+    // Second: try state + commodity
+    // ---------------------------------------------------------
+
+    data =
+      await getMandiPrices({
+        state,
+        commodity,
+        limit: 30,
+      });
+
+    if (
+      Array.isArray(data?.records) &&
+      data.records.length > 0
+    ) {
+      return data;
+    }
+
+    // ---------------------------------------------------------
+    // Third: try commodity only
+    // ---------------------------------------------------------
+
+    data =
+      await getMandiPrices({
+        commodity,
+        limit: 30,
+      });
+
+    return data;
+  } catch (error) {
+    console.error(
+      "Mandi lookup failed:",
+      error
+    );
+
+    return null;
+  }
+}
+
+// =============================================================
+// COMPONENT
+// =============================================================
+
+export default function AiCopilotPage() {
+  const routerLocation =
+    useLocation();
+
+  // -----------------------------------------------------------
+  // STATE
+  // -----------------------------------------------------------
+
+  const [messages, setMessages] =
+    useState([
+      {
+        sender: "ai",
+        text:
+          "नमस्ते! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
+        time: "Now",
+      },
+    ]);
+
+  const [input, setInput] =
+    useState("");
+
+  const [isListening, setIsListening] =
+    useState(false);
+
+  const [isThinking, setIsThinking] =
+    useState(false);
+
   const [selectedLanguage, setSelectedLanguage] =
     useState("हिंदी");
+
+  const [farmerContext, setFarmerContext] =
+    useState({
+      location: null,
+      weather: null,
+      mandi: null,
+    });
+
+  const [contextLoading, setContextLoading] =
+    useState(true);
+
+  // -----------------------------------------------------------
+  // LOAD LOCATION + WEATHER
+  // -----------------------------------------------------------
+
+  async function loadFarmerContext() {
+    try {
+      setContextLoading(true);
+
+      const coordinates =
+        await getCurrentLocation();
+
+      const [
+        weather,
+        locationName,
+      ] = await Promise.all([
+        getWeather(
+          coordinates.latitude,
+          coordinates.longitude
+        ),
+
+        getLocationName(
+          coordinates.latitude,
+          coordinates.longitude
+        ),
+      ]);
+
+      const context = {
+        location: {
+          latitude:
+            coordinates.latitude,
+
+          longitude:
+            coordinates.longitude,
+
+          accuracy:
+            coordinates.accuracy,
+
+          ...locationName,
+        },
+
+        weather,
+
+        mandi: null,
+      };
+
+      setFarmerContext(context);
+
+      console.log(
+        "Farmer context loaded:",
+        context
+      );
+
+      return context;
+    } catch (error) {
+      console.error(
+        "Failed to load farmer context:",
+        error
+      );
+
+      return {
+        location: null,
+        weather: null,
+        mandi: null,
+      };
+    } finally {
+      setContextLoading(false);
+    }
+  }
+
+  // -----------------------------------------------------------
+  // INITIAL CONTEXT LOAD
+  // -----------------------------------------------------------
+
+  useEffect(() => {
+    loadFarmerContext();
+  }, []);
 
   // -----------------------------------------------------------
   // SEND MESSAGE
   // -----------------------------------------------------------
 
   async function sendMessage(text) {
-    const trimmed = String(text || "").trim();
+    const trimmed =
+      String(text || "").trim();
 
-    if (!trimmed || isThinking) {
+    if (
+      !trimmed ||
+      isThinking
+    ) {
       return;
     }
 
     setMessages((prev) => [
       ...prev,
+
       {
         sender: "user",
         text: trimmed,
@@ -121,16 +496,68 @@ export default function AiCopilotPage() {
     setIsThinking(true);
 
     try {
-      const languageCode =
-        LANGUAGE_PROMPT_CODES[selectedLanguage] || "hi";
+      // -------------------------------------------------------
+      // Ensure location/weather are available
+      // -------------------------------------------------------
 
-      const answer = await getChatResponse(
-        trimmed,
-        languageCode
+      let context =
+        farmerContext;
+
+      if (
+        !context?.location ||
+        !context?.weather
+      ) {
+        context =
+          await loadFarmerContext();
+      }
+
+      // -------------------------------------------------------
+      // Fetch mandi data only when needed
+      // -------------------------------------------------------
+
+      const mandiData =
+        await fetchRelevantMandiData(
+          trimmed,
+          context?.location
+        );
+
+      const finalContext = {
+        ...context,
+        mandi: mandiData,
+      };
+
+      setFarmerContext(
+        finalContext
       );
+
+      console.log(
+        "AI context for question:",
+        finalContext
+      );
+
+      // -------------------------------------------------------
+      // Ask Gemini
+      // -------------------------------------------------------
+
+      const languageCode =
+        LANGUAGE_PROMPT_CODES[
+          selectedLanguage
+        ] || "hi";
+
+      const answer =
+        await getChatResponse(
+          trimmed,
+          languageCode,
+          finalContext
+        );
+
+      // -------------------------------------------------------
+      // Display answer
+      // -------------------------------------------------------
 
       setMessages((prev) => [
         ...prev,
+
         {
           sender: "ai",
           text: answer,
@@ -138,12 +565,21 @@ export default function AiCopilotPage() {
         },
       ]);
 
+      // -------------------------------------------------------
+      // Speak answer
+      // -------------------------------------------------------
+
       speakResponse(
         answer,
-        LANGUAGE_CODES[selectedLanguage] || "hi-IN"
+        LANGUAGE_CODES[
+          selectedLanguage
+        ] || "hi-IN"
       );
     } catch (error) {
-      console.error("Gemini error:", error);
+      console.error(
+        "AI Copilot error:",
+        error
+      );
 
       const errorMessage =
         error?.message ||
@@ -151,9 +587,11 @@ export default function AiCopilotPage() {
 
       setMessages((prev) => [
         ...prev,
+
         {
           sender: "ai",
-          text: `AI assistant error: ${errorMessage}`,
+          text:
+            `AI assistant error: ${errorMessage}`,
           time: "Now",
         },
       ]);
@@ -163,18 +601,17 @@ export default function AiCopilotPage() {
   }
 
   // -----------------------------------------------------------
-  // HANDLE FARM DASHBOARD → COPILOT
+  // FARM DASHBOARD → COPILOT
   // -----------------------------------------------------------
 
   useEffect(() => {
-    const prompt = location.state?.prompt;
+    const prompt =
+      routerLocation.state?.prompt;
 
     if (!prompt) {
       return;
     }
 
-    // Clear navigation state so refreshing the page does not
-    // automatically send the same prompt again.
     window.history.replaceState(
       {},
       document.title,
@@ -182,7 +619,7 @@ export default function AiCopilotPage() {
     );
 
     sendMessage(prompt);
-  }, [location.state]);
+  }, [routerLocation.state]);
 
   // -----------------------------------------------------------
   // MICROPHONE
@@ -197,7 +634,9 @@ export default function AiCopilotPage() {
 
     startListening({
       language:
-        LANGUAGE_CODES[selectedLanguage] || "hi-IN",
+        LANGUAGE_CODES[
+          selectedLanguage
+        ] || "hi-IN",
 
       onStart: () => {
         setIsListening(true);
@@ -213,12 +652,16 @@ export default function AiCopilotPage() {
       },
 
       onError: (error) => {
-        console.error("Voice input error:", error);
+        console.error(
+          "Voice input error:",
+          error
+        );
 
         setIsListening(false);
 
         setMessages((prev) => [
           ...prev,
+
           {
             sender: "ai",
             text:
@@ -239,7 +682,9 @@ export default function AiCopilotPage() {
   function handleSpeak(text) {
     speakResponse(
       text,
-      LANGUAGE_CODES[selectedLanguage] || "hi-IN"
+      LANGUAGE_CODES[
+        selectedLanguage
+      ] || "hi-IN"
     );
   }
 
@@ -249,6 +694,7 @@ export default function AiCopilotPage() {
 
   return (
     <Layout title="AI Copilot">
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
 
         {/* MAIN CHAT */}
@@ -256,25 +702,49 @@ export default function AiCopilotPage() {
         <div className="rounded-2xl bg-[#f4f1e7] p-5 sm:p-6">
 
           <div className="flex items-center gap-3">
+
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1f5b3d] text-white">
               <Mic size={22} />
             </div>
 
             <div>
+
               <h2 className="font-serif text-xl font-bold text-[#24352a]">
                 AI Farming Copilot
               </h2>
 
               <p className="flex items-center gap-1.5 text-sm text-slate-500">
+
                 <span className="h-2 w-2 rounded-full bg-green-500" />
+
                 AI assistant · Multilingual
+
               </p>
+
             </div>
+
+          </div>
+
+          {/* CONTEXT STATUS */}
+
+          <div className="mt-3 text-xs text-slate-400">
+
+            {contextLoading
+              ? "Loading your location and live weather..."
+              : farmerContext?.location
+                ? `Using live data for ${
+                    farmerContext.location.city ||
+                    farmerContext.location.state ||
+                    "your location"
+                  }`
+                : "Live location unavailable"}
+
           </div>
 
           {/* LANGUAGE */}
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
+
             <span className="text-xs font-semibold text-slate-500">
               Voice language:
             </span>
@@ -282,98 +752,145 @@ export default function AiCopilotPage() {
             <select
               value={selectedLanguage}
               onChange={(e) =>
-                setSelectedLanguage(e.target.value)
+                setSelectedLanguage(
+                  e.target.value
+                )
               }
               className="rounded-full border border-[#e5dfd2] bg-white px-3 py-1.5 text-xs font-medium text-[#24352a] outline-none"
             >
-              {SUPPORTED_LANGUAGES.map((lang) => (
-                <option key={lang} value={lang}>
-                  {lang}
-                </option>
-              ))}
 
-              <option value="English">English</option>
+              {SUPPORTED_LANGUAGES.map(
+                (lang) => (
+                  <option
+                    key={lang}
+                    value={lang}
+                  >
+                    {lang}
+                  </option>
+                )
+              )}
+
+              <option value="English">
+                English
+              </option>
+
             </select>
+
           </div>
 
           {/* QUICK CHIPS */}
 
           <div className="mt-5 flex flex-wrap gap-2">
-            {QUICK_CHIPS.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => sendMessage(chip)}
-                disabled={isThinking}
-                className="rounded-full bg-white px-4 py-2 text-sm font-medium text-[#24352a] shadow-sm hover:bg-[#e7edda] disabled:opacity-60"
-              >
-                {chip}
-              </button>
-            ))}
+
+            {QUICK_CHIPS.map(
+              (chip) => (
+
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() =>
+                    sendMessage(chip)
+                  }
+                  disabled={isThinking}
+                  className="rounded-full bg-white px-4 py-2 text-sm font-medium text-[#24352a] shadow-sm hover:bg-[#e7edda] disabled:opacity-60"
+                >
+                  {chip}
+                </button>
+
+              )
+            )}
+
           </div>
 
           {/* CHAT */}
 
           <div className="mt-5 space-y-4">
-            {messages.map((msg, i) =>
-              msg.sender === "ai" ? (
-                <div
-                  key={`${msg.sender}-${i}`}
-                  className="flex items-start gap-2.5"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1f5b3d] text-white">
-                    <Mic size={14} />
+
+            {messages.map(
+              (msg, i) =>
+                msg.sender ===
+                "ai" ? (
+
+                  <div
+                    key={`${msg.sender}-${i}`}
+                    className="flex items-start gap-2.5"
+                  >
+
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1f5b3d] text-white">
+                      <Mic size={14} />
+                    </div>
+
+                    <div>
+
+                      <div className="max-w-xl whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-[#24352a] shadow-sm">
+                        {msg.text}
+                      </div>
+
+                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+
+                        <span>
+                          {msg.time}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSpeak(
+                              msg.text
+                            )
+                          }
+                          className="flex items-center gap-1 hover:text-[#1f5b3d]"
+                        >
+                          <Volume2
+                            size={12}
+                          />
+                          Listen
+                        </button>
+
+                      </div>
+
+                    </div>
+
                   </div>
 
-                  <div>
-                    <div className="max-w-xl whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-[#24352a] shadow-sm">
+                ) : (
+
+                  <div
+                    key={`${msg.sender}-${i}`}
+                    className="flex justify-end"
+                  >
+
+                    <div className="max-w-xl whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-[#214d34] px-4 py-3 text-sm text-white shadow-sm">
                       {msg.text}
                     </div>
 
-                    <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
-                      <span>{msg.time}</span>
+                  </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleSpeak(msg.text)
-                        }
-                        className="flex items-center gap-1 hover:text-[#1f5b3d]"
-                      >
-                        <Volume2 size={12} />
-                        Listen
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  key={`${msg.sender}-${i}`}
-                  className="flex justify-end"
-                >
-                  <div className="max-w-xl whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-[#214d34] px-4 py-3 text-sm text-white shadow-sm">
-                    {msg.text}
-                  </div>
-                </div>
-              )
+                )
             )}
 
             {isThinking && (
+
               <div className="flex items-start gap-2.5">
+
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1f5b3d] text-white">
                   <Mic size={14} />
                 </div>
 
                 <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
-                  Thinking...
+                  Checking live data and thinking...
                 </div>
+
               </div>
+
             )}
+
           </div>
 
           {/* INPUT */}
 
           <div className="mt-6 flex items-center gap-2">
+
             <button
               type="button"
               onClick={handleMicClick}
@@ -389,11 +906,13 @@ export default function AiCopilotPage() {
                   : "Speak your question"
               }
             >
+
               {isListening ? (
                 <Square size={16} />
               ) : (
                 <Mic size={18} />
               )}
+
             </button>
 
             <input
@@ -402,10 +921,12 @@ export default function AiCopilotPage() {
                 setInput(e.target.value)
               }
               onKeyDown={(e) => {
+
                 if (e.key === "Enter") {
                   e.preventDefault();
                   sendMessage(input);
                 }
+
               }}
               placeholder="Type or speak in any language..."
               className="h-11 flex-1 rounded-full border border-[#e5dfd2] bg-white px-4 text-sm text-[#24352a] outline-none placeholder:text-slate-400 focus:border-[#1f5b3d]"
@@ -413,12 +934,18 @@ export default function AiCopilotPage() {
 
             <button
               type="button"
-              onClick={() => sendMessage(input)}
-              disabled={!input.trim() || isThinking}
+              onClick={() =>
+                sendMessage(input)
+              }
+              disabled={
+                !input.trim() ||
+                isThinking
+              }
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#c9d9bd] text-[#4a5c3f] disabled:opacity-60 enabled:bg-[#1f5b3d] enabled:text-white enabled:hover:bg-[#173b27]"
             >
               <Send size={16} />
             </button>
+
           </div>
 
           <button
@@ -428,6 +955,7 @@ export default function AiCopilotPage() {
           >
             Stop voice response
           </button>
+
         </div>
 
         {/* RIGHT COLUMN */}
@@ -435,53 +963,76 @@ export default function AiCopilotPage() {
         <div className="space-y-5">
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <p className="flex items-center gap-2 font-serif text-base font-bold text-[#24352a]">
+
               <Star
                 size={16}
                 className="text-[#c9a24b]"
                 fill="#c9a24b"
               />
+
               Sample Questions
+
             </p>
 
             <div className="mt-3 space-y-2">
-              {SAMPLE_QUESTIONS.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => sendMessage(q)}
-                  disabled={isThinking}
-                  className="block w-full rounded-xl bg-[#f7f5ee] px-3 py-2.5 text-left text-sm text-[#24352a] hover:bg-[#e7edda] disabled:opacity-60"
-                >
-                  {q}
-                </button>
-              ))}
+
+              {SAMPLE_QUESTIONS.map(
+                (q) => (
+
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() =>
+                      sendMessage(q)
+                    }
+                    disabled={isThinking}
+                    className="block w-full rounded-xl bg-[#f7f5ee] px-3 py-2.5 text-left text-sm text-[#24352a] hover:bg-[#e7edda] disabled:opacity-60"
+                  >
+                    {q}
+                  </button>
+
+                )
+              )}
+
             </div>
+
           </div>
 
           <div className="rounded-2xl bg-[#e7edda] p-5">
+
             <p className="font-serif text-base font-bold text-[#24352a]">
               Supported Languages
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {SUPPORTED_LANGUAGES.map((lang) => (
-                <span
-                  key={lang}
-                  className="rounded-full bg-white px-3 py-1 text-sm font-medium text-[#24352a] shadow-sm"
-                >
-                  {lang}
-                </span>
-              ))}
+
+              {SUPPORTED_LANGUAGES.map(
+                (lang) => (
+
+                  <span
+                    key={lang}
+                    className="rounded-full bg-white px-3 py-1 text-sm font-medium text-[#24352a] shadow-sm"
+                  >
+                    {lang}
+                  </span>
+
+                )
+              )}
 
               <span className="rounded-full bg-white px-3 py-1 text-sm font-medium text-[#24352a] shadow-sm">
                 English
               </span>
+
             </div>
+
           </div>
 
         </div>
+
       </div>
+
     </Layout>
   );
 }

@@ -1,4 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+
+import { getWeather } from "./services/weatherApi.js";
+import { getCurrentLocation } from "./services/location.js";
+import { getLocationName } from "./services/geocodingApi.js";
 
 import {
   Sun,
@@ -7,7 +11,6 @@ import {
   Droplets,
   Wind,
   Thermometer,
-  Umbrella,
   Bug,
   Snowflake,
   TrendingUp,
@@ -21,73 +24,106 @@ import {
 
 import Layout from "./Layout.jsx";
 
-const forecast = [
-  {
-    day: "Today",
-    icon: Sun,
-    high: "34°",
-    low: "24°",
-    rain: null,
-    active: true,
-  },
-  {
-    day: "Tue",
-    icon: CloudRain,
-    high: "30°",
-    low: "22°",
-    rain: "75%",
-  },
-  {
-    day: "Wed",
-    icon: CloudRain,
-    high: "27°",
-    low: "20°",
-    rain: "90%",
-  },
-  {
-    day: "Thu",
-    icon: CloudRain,
-    high: "28°",
-    low: "21°",
-    rain: "60%",
-  },
-  {
-    day: "Fri",
-    icon: Sun,
-    high: "31°",
-    low: "23°",
-    rain: null,
-  },
-  {
-    day: "Sat",
-    icon: Sun,
-    high: "33°",
-    low: "24°",
-    rain: null,
-  },
-  {
-    day: "Sun",
-    icon: Sun,
-    high: "35°",
-    low: "25°",
-    rain: null,
-  },
-];
+/* ---------------- WEATHER HELPERS ---------------- */
+
+function getWeatherInfo(code) {
+  if (code === 0) {
+    return {
+      text: "Clear Sky",
+      icon: Sun,
+    };
+  }
+
+  if (code === 1 || code === 2) {
+    return {
+      text: "Partly Cloudy",
+      icon: CloudSun,
+    };
+  }
+
+  if (code === 3) {
+    return {
+      text: "Overcast",
+      icon: Cloud,
+    };
+  }
+
+  if (
+    code === 51 ||
+    code === 53 ||
+    code === 55 ||
+    code === 56 ||
+    code === 57
+  ) {
+    return {
+      text: "Drizzle",
+      icon: CloudRain,
+    };
+  }
+
+  if (
+    code === 61 ||
+    code === 63 ||
+    code === 65 ||
+    code === 66 ||
+    code === 67
+  ) {
+    return {
+      text: "Rain",
+      icon: CloudRain,
+    };
+  }
+
+  if (code === 71 || code === 73 || code === 75 || code === 77) {
+    return {
+      text: "Snow",
+      icon: Snowflake,
+    };
+  }
+
+  if (code === 80 || code === 81 || code === 82) {
+    return {
+      text: "Rain Showers",
+      icon: CloudRain,
+    };
+  }
+
+  if (code === 85 || code === 86) {
+    return {
+      text: "Snow Showers",
+      icon: Snowflake,
+    };
+  }
+
+  if (code === 95 || code === 96 || code === 99) {
+    return {
+      text: "Thunderstorm",
+      icon: CloudRain,
+    };
+  }
+
+  return {
+    text: "Unknown",
+    icon: Cloud,
+  };
+}
+
+/* ---------------- RISK ALERTS ---------------- */
 
 const riskAlerts = [
   {
     title: "Heavy Rain",
-    text: "80mm rain expected Wednesday. Drain fields.",
-    label: "High Risk",
+    text: "Heavy rainfall may increase waterlogging risk. Check field drainage.",
+    label: "Weather Risk",
     icon: CloudRain,
     box: "bg-blue-50 border-blue-200",
     iconColor: "text-blue-500",
-    badge: "bg-red-100 text-red-600",
+    badge: "bg-blue-100 text-blue-600",
   },
   {
     title: "Heatwave",
-    text: "Temp >40°C Tuesday. Increase irrigation.",
-    label: "Next Week",
+    text: "High temperatures can increase crop water stress. Monitor irrigation.",
+    label: "Monitor",
     icon: Thermometer,
     box: "bg-red-50 border-red-200",
     iconColor: "text-red-500",
@@ -95,8 +131,8 @@ const riskAlerts = [
   },
   {
     title: "Frost Risk",
-    text: "No frost expected this week. Monitor.",
-    label: "Low Risk",
+    text: "Low temperatures can damage sensitive crops. Monitor overnight conditions.",
+    label: "Monitor",
     icon: Snowflake,
     box: "bg-sky-50 border-sky-200",
     iconColor: "text-sky-500",
@@ -104,61 +140,65 @@ const riskAlerts = [
   },
   {
     title: "Pest Risk",
-    text: "Humid conditions favor bollworm. Inspect.",
-    label: "High Risk",
+    text: "Warm and humid conditions can increase pest pressure. Inspect crops regularly.",
+    label: "Monitor",
     icon: Bug,
     box: "bg-orange-50 border-orange-200",
     iconColor: "text-orange-500",
-    badge: "bg-red-100 text-red-600",
+    badge: "bg-orange-100 text-orange-600",
   },
 ];
 
+/* ---------------- ACTION PLAN ---------------- */
+
 const actionPlan = [
-  "Apply fungicide before 10 AM (before rain arrives)",
-  "Skip all irrigation today — rain tomorrow",
-  "Inspect cotton field for bollworm signs",
-  "Harvest ripe tomatoes before rain (done)",
-  "Drain excess water from paddy bunds",
-  "Store harvested produce in dry shade",
+  "Check field drainage before heavy rainfall",
+  "Avoid unnecessary irrigation when rain is expected",
+  "Inspect crops for pest or disease symptoms",
+  "Harvest ripe produce before heavy rain",
+  "Monitor soil moisture after rainfall",
+  "Store harvested produce in a dry, shaded place",
 ];
+
+/* ---------------- CROPS ---------------- */
 
 const crops = [
   {
     name: "Cotton",
     acres: "2.5 Acres",
     emoji: "🌾",
-    status: "Action Needed",
+    status: "Monitor",
     statusClass: "bg-orange-100 text-orange-700",
     bg: "bg-orange-50/70",
     border: "border-orange-200",
     items: [
       {
         icon: CloudRain,
-        title: "Heavy Rain Tomorrow",
-        text: "Waterlogging risk — ensure drainage channels are clear.",
+        title: "Rain Impact",
+        text: "Heavy rainfall can cause waterlogging. Keep drainage channels clear.",
         color: "text-blue-500",
       },
       {
         icon: Bug,
-        title: "Bollworm Risk",
-        text: "Humid conditions increase pest pressure. Inspect today.",
+        title: "Pest Monitoring",
+        text: "Warm and humid conditions may increase pest pressure. Inspect regularly.",
         color: "text-red-500",
       },
       {
         icon: Sun,
-        title: "Today Sunny",
-        text: "Good for boll development. Apply pesticide before 10 AM.",
+        title: "Sunny Conditions",
+        text: "Dry and sunny periods are useful for field operations.",
         color: "text-yellow-500",
       },
     ],
-    action: "Clear drainage. Apply pesticide today before rain.",
+    action: "Keep drainage clear and monitor the crop after rainfall.",
   },
 
   {
     name: "Tomato",
     acres: "1.2 Acres",
     emoji: "🍅",
-    status: "High Risk",
+    status: "Monitor",
     statusClass: "bg-red-100 text-red-600",
     bg: "bg-red-50/70",
     border: "border-red-200",
@@ -166,23 +206,23 @@ const crops = [
       {
         icon: CloudRain,
         title: "Rain + Humidity",
-        text: "High early blight risk. Apply Mancozeb before rain arrives.",
+        text: "Wet conditions can increase fungal disease risk.",
         color: "text-blue-500",
       },
       {
         icon: Thermometer,
-        title: "Heat (34°C)",
-        text: "Stress on fruit setting. Irrigate in the morning.",
+        title: "Temperature",
+        text: "High temperatures may cause heat stress. Monitor plants closely.",
         color: "text-red-500",
       },
       {
         icon: TrendingUp,
-        title: "Price Rising",
-        text: "Good time to harvest and sell. Nashik price ₹1,960/Q.",
+        title: "Harvest Timing",
+        text: "Harvest ripe fruit before periods of heavy rainfall.",
         color: "text-green-600",
       },
     ],
-    action: "Spray fungicide today. Harvest ripe fruit before rain.",
+    action: "Monitor disease symptoms and harvest ripe fruit before heavy rain.",
   },
 
   {
@@ -196,24 +236,24 @@ const crops = [
     items: [
       {
         icon: CloudRain,
-        title: "Rain Tomorrow",
-        text: "Timely rain is beneficial for grain filling stage.",
+        title: "Rain",
+        text: "Rainfall may provide useful moisture depending on the crop stage.",
         color: "text-blue-500",
       },
       {
         icon: Thermometer,
-        title: "Heatwave Next Week",
-        text: "Temp >40°C may affect grain quality. Monitor closely.",
+        title: "Temperature",
+        text: "Monitor high temperatures during sensitive growth stages.",
         color: "text-orange-500",
       },
       {
         icon: Droplets,
-        title: "Skip Irrigation",
-        text: "Rain expected — save water and skip today's irrigation.",
+        title: "Irrigation",
+        text: "Adjust irrigation according to rainfall and soil moisture.",
         color: "text-green-600",
       },
     ],
-    action: "Skip irrigation. Rain will be sufficient. Watch heat next week.",
+    action: "Monitor soil moisture and adjust irrigation based on rainfall.",
   },
 
   {
@@ -227,110 +267,328 @@ const crops = [
     items: [
       {
         icon: CloudRain,
-        title: "Heavy Rain Risk",
-        text: "Excess moisture can cause bulb rot. Ensure field drainage.",
+        title: "Rain Risk",
+        text: "Excess moisture can increase bulb rot risk. Ensure good drainage.",
         color: "text-blue-500",
       },
       {
         icon: Eye,
-        title: "Purple Blotch Risk",
-        text: "High humidity favors fungal disease. Spray Iprodione.",
+        title: "Disease Monitoring",
+        text: "High humidity can favor fungal diseases. Inspect leaves regularly.",
         color: "text-orange-500",
       },
       {
         icon: TrendingDown,
-        title: "Price Declining",
-        text: "Hold stock 5–7 days. Prices likely to recover.",
+        title: "Market",
+        text: "Check local market prices before deciding when to sell stored produce.",
         color: "text-red-500",
       },
     ],
-    action: "Improve drainage. Spray fungicide. Hold stock for now.",
+    action: "Improve drainage and monitor for fungal disease after rainfall.",
   },
 ];
 
-const hourly = [
-  { time: "6 AM", temp: "26°", icon: Sun },
-  { time: "8 AM", temp: "29°", icon: Sun },
-  { time: "10 AM", temp: "32°", rain: "5%", icon: Sun },
-  { time: "12 PM", temp: "34°", icon: Sun },
-  { time: "2 PM", temp: "35°", icon: Sun },
-  { time: "4 PM", temp: "34°", icon: Sun },
-  { time: "6 PM", temp: "31°", rain: "10%", icon: Sun },
-  { time: "8 PM", temp: "28°", rain: "40%", icon: CloudRain },
-  { time: "10 PM", temp: "26°", rain: "65%", icon: CloudRain },
-];
-
 export default function WeatherPage() {
+  const [weatherData, setWeatherData] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [weatherError, setWeatherError] = useState(null);
+
+  // NEW: readable location
+  const [locationName, setLocationName] = useState(null);
+
+  const current = weatherData?.current;
+  const daily = weatherData?.daily;
+  const hourlyData = weatherData?.hourly;
+
+  /* ---------------- LOAD WEATHER + LOCATION ---------------- */
+
+  useEffect(() => {
+    async function loadWeather() {
+      try {
+        setWeatherLoading(true);
+        setWeatherError(null);
+
+        // Get user's GPS coordinates
+        const location = await getCurrentLocation();
+
+        // Fetch weather and readable location together
+        const [data, place] = await Promise.all([
+          getWeather(location.latitude, location.longitude),
+          getLocationName(location.latitude, location.longitude),
+        ]);
+
+        console.log("Weather API data:", data);
+        console.log("Location data:", place);
+
+        setWeatherData(data);
+        setLocationName(place);
+      } catch (error) {
+        console.error("Weather loading failed:", error);
+        setWeatherError(error.message);
+      } finally {
+        setWeatherLoading(false);
+      }
+    }
+
+    loadWeather();
+  }, []);
+
+  /* ---------------- CURRENT WEATHER ---------------- */
+
+  const currentWeatherInfo = current
+    ? getWeatherInfo(current.weather_code)
+    : {
+        text: "--",
+        icon: Cloud,
+      };
+
+  const CurrentWeatherIcon = currentWeatherInfo.icon;
+
+  /* ---------------- DAILY FORECAST ---------------- */
+
+  const forecast = daily
+    ? daily.time.slice(0, 7).map((date, index) => {
+        const weatherInfo = getWeatherInfo(daily.weather_code[index]);
+
+        return {
+          day:
+            index === 0
+              ? "Today"
+              : new Date(date).toLocaleDateString("en-US", {
+                  weekday: "short",
+                }),
+          icon: weatherInfo.icon,
+          high: `${Math.round(daily.temperature_2m_max[index])}°`,
+          low: `${Math.round(daily.temperature_2m_min[index])}°`,
+          rain:
+            daily.precipitation_probability_max[index] != null
+              ? `${daily.precipitation_probability_max[index]}%`
+              : null,
+          active: index === 0,
+        };
+      })
+    : [];
+
+  /* ---------------- HOURLY FORECAST ---------------- */
+
+  const hourly = hourlyData
+    ? (() => {
+        const now = new Date();
+        const currentHour = now.getHours();
+
+        const startIndex = hourlyData.time.findIndex((time) => {
+          const hour = new Date(time).getHours();
+
+          return hour >= currentHour;
+        });
+
+        const safeStartIndex = startIndex === -1 ? 0 : startIndex;
+
+        return hourlyData.time
+          .slice(safeStartIndex, safeStartIndex + 9)
+          .map((time, index) => {
+            const actualIndex = safeStartIndex + index;
+
+            const weatherInfo = getWeatherInfo(
+              hourlyData.weather_code[actualIndex]
+            );
+
+            return {
+              time: new Date(time).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+              }),
+              temp: `${Math.round(
+                hourlyData.temperature_2m[actualIndex]
+              )}°`,
+              rain:
+                hourlyData.precipitation_probability[actualIndex] != null
+                  ? `${hourlyData.precipitation_probability[actualIndex]}%`
+                  : null,
+              icon: weatherInfo.icon,
+            };
+          });
+      })()
+    : [];
+
+  /* ---------------- LOADING STATE ---------------- */
+
+  if (weatherLoading) {
+    return (
+      <Layout title="Weather">
+        <div className="flex min-h-[400px] items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-[#2d7054] border-t-transparent" />
+
+            <p className="mt-4 font-semibold text-gray-600">
+              Loading weather data...
+            </p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  /* ---------------- ERROR STATE ---------------- */
+
+  if (weatherError) {
+    return (
+      <Layout title="Weather">
+        <div className="rounded-[24px] bg-red-50 p-6 text-center">
+          <h2 className="font-serif text-xl font-bold text-red-700">
+            Unable to load weather
+          </h2>
+
+          <p className="mt-2 text-sm text-red-600">{weatherError}</p>
+
+          <p className="mt-3 text-sm text-gray-500">
+            Please check that location access is enabled and try again.
+          </p>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout title="Weather">
       <div className="space-y-7">
 
         {/* PAGE TITLE */}
+
         <div>
           <h1 className="font-serif text-2xl font-bold text-[#202820]">
             Weather Intelligence
           </h1>
+
+          {/* LOCATION */}
+
+          {locationName && (
+            <div className="mt-2 flex items-center gap-2 text-sm font-medium text-gray-500">
+              <MapPinIcon />
+
+              <span>
+                {locationName.city}
+                {locationName.state && `, ${locationName.state}`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* CURRENT WEATHER + 7 DAY FORECAST */}
+
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[395px_1fr]">
 
           {/* CURRENT WEATHER */}
+
           <div className="relative overflow-hidden rounded-[24px] bg-[#2d7054] p-7 text-white">
 
             <div className="absolute -right-8 -top-12 h-48 w-48 rounded-full bg-[#438064] opacity-70" />
 
             <p className="relative text-sm font-semibold text-white/70">
-              Right Now · Nashik
+              Right Now
             </p>
 
             <div className="relative mt-3 flex items-center gap-5">
-              <Sun size={55} strokeWidth={2.5} className="text-yellow-300" />
+
+              <CurrentWeatherIcon
+                size={55}
+                strokeWidth={2.5}
+                className="text-yellow-300"
+              />
 
               <div>
-                <div className="text-5xl font-bold">34°</div>
-                <p className="text-sm text-white/70">Partly Sunny</p>
+
+                <div className="text-5xl font-bold">
+                  {current
+                    ? `${Math.round(current.temperature_2m)}°C`
+                    : "--"}
+                </div>
+
+                <p className="text-sm text-white/70">
+                  {currentWeatherInfo.text}
+                </p>
+
               </div>
+
             </div>
 
             <div className="relative mt-7 grid grid-cols-2 gap-3">
 
+              {/* HUMIDITY */}
+
               <div className="rounded-2xl bg-white/10 p-3">
+
                 <div className="flex items-center gap-2 text-sm text-white/60">
                   <Droplets size={16} />
                   Humidity
                 </div>
-                <p className="mt-1 text-lg font-bold">68%</p>
+
+                <p className="mt-1 text-lg font-bold">
+                  {current
+                    ? `${Math.round(
+                        current.relative_humidity_2m
+                      )}%`
+                    : "--"}
+                </p>
+
               </div>
 
+              {/* WIND */}
+
               <div className="rounded-2xl bg-white/10 p-3">
+
                 <div className="flex items-center gap-2 text-sm text-white/60">
                   <Wind size={16} />
                   Wind
                 </div>
-                <p className="mt-1 text-lg font-bold">12 km/h</p>
+
+                <p className="mt-1 text-lg font-bold">
+                  {current
+                    ? `${Math.round(current.wind_speed_10m)} km/h`
+                    : "--"}
+                </p>
+
               </div>
 
+              {/* FEELS LIKE */}
+
               <div className="rounded-2xl bg-white/10 p-3">
+
                 <div className="flex items-center gap-2 text-sm text-white/60">
                   <Thermometer size={16} />
                   Feels Like
                 </div>
-                <p className="mt-1 text-lg font-bold">37°C</p>
+
+                <p className="mt-1 text-lg font-bold">
+                  {current
+                    ? `${Math.round(
+                        current.apparent_temperature
+                      )}°C`
+                    : "--"}
+                </p>
+
               </div>
 
+              {/* PRECIPITATION */}
+
               <div className="rounded-2xl bg-white/10 p-3">
+
                 <div className="flex items-center gap-2 text-sm text-white/60">
-                  <Sun size={16} />
-                  UV Index
+                  <Droplets size={16} />
+                  Precipitation
                 </div>
-                <p className="mt-1 text-lg font-bold">High</p>
+
+                <p className="mt-1 text-lg font-bold">
+                  {current ? `${current.precipitation ?? 0} mm` : "--"}
+                </p>
+
               </div>
 
             </div>
           </div>
 
           {/* FORECAST */}
+
           <div className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
             <h2 className="font-serif text-xl font-bold text-[#202820]">
@@ -340,6 +598,7 @@ export default function WeatherPage() {
             <div className="mt-5 grid grid-cols-4 gap-2 sm:grid-cols-7">
 
               {forecast.map((item) => {
+
                 const Icon = item.icon;
 
                 return (
@@ -351,9 +610,12 @@ export default function WeatherPage() {
                         : "bg-[#eae7df] text-[#202820]"
                     }`}
                   >
+
                     <p
                       className={`text-sm font-bold ${
-                        item.active ? "text-white" : "text-gray-500"
+                        item.active
+                          ? "text-white"
+                          : "text-gray-500"
                       }`}
                     >
                       {item.day}
@@ -374,7 +636,9 @@ export default function WeatherPage() {
 
                     <p
                       className={`mt-1 text-sm ${
-                        item.active ? "text-white/60" : "text-gray-500"
+                        item.active
+                          ? "text-white/60"
+                          : "text-gray-500"
                       }`}
                     >
                       {item.low}
@@ -385,6 +649,7 @@ export default function WeatherPage() {
                         {item.rain}
                       </p>
                     )}
+
                   </div>
                 );
               })}
@@ -392,6 +657,7 @@ export default function WeatherPage() {
             </div>
 
             {/* RAINFALL GRAPH */}
+
             <div className="mt-6">
 
               <p className="text-sm font-bold uppercase tracking-wide text-gray-500">
@@ -400,28 +666,34 @@ export default function WeatherPage() {
 
               <div className="mt-4 flex h-20 items-end justify-between gap-4 px-5">
 
-                {[0, 30, 45, 25, 5, 0, 0].map((height, index) => (
-                  <div
-                    key={index}
-                    className="flex flex-1 items-end justify-center"
-                  >
+                {forecast.map((item, index) => {
+
+                  const value =
+                    daily?.precipitation_probability_max?.[index] ?? 0;
+
+                  return (
                     <div
-                      className="w-7 rounded-t-md bg-blue-400"
-                      style={{ height: `${height + 4}px` }}
-                    />
-                  </div>
-                ))}
+                      key={item.day}
+                      className="flex flex-1 items-end justify-center"
+                    >
+                      <div
+                        className="w-7 rounded-t-md bg-blue-400"
+                        style={{
+                          height: `${Math.max(value * 0.7, 4)}px`,
+                        }}
+                      />
+                    </div>
+                  );
+                })}
 
               </div>
 
               <div className="mt-1 flex justify-between px-5 text-[11px] text-gray-500">
-                <span>Today</span>
-                <span>Tue</span>
-                <span>Wed</span>
-                <span>Thu</span>
-                <span>Fri</span>
-                <span>Sat</span>
-                <span>Sun</span>
+
+                {forecast.map((item) => (
+                  <span key={item.day}>{item.day}</span>
+                ))}
+
               </div>
 
             </div>
@@ -429,6 +701,7 @@ export default function WeatherPage() {
         </div>
 
         {/* RISK ALERTS */}
+
         <section>
 
           <h2 className="font-serif text-2xl font-bold text-[#202820]">
@@ -438,6 +711,7 @@ export default function WeatherPage() {
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
 
             {riskAlerts.map((risk) => {
+
               const Icon = risk.icon;
 
               return (
@@ -448,7 +722,10 @@ export default function WeatherPage() {
 
                   <div className="flex items-center justify-between">
 
-                    <Icon size={23} className={risk.iconColor} />
+                    <Icon
+                      size={23}
+                      className={risk.iconColor}
+                    />
 
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-bold ${risk.badge}`}
@@ -474,19 +751,26 @@ export default function WeatherPage() {
         </section>
 
         {/* ACTION PLAN */}
+
         <section className="rounded-[24px] bg-[#d9f3dd] p-6">
 
           <div className="flex items-center gap-2">
-            <Zap size={22} className="text-[#2d7054]" />
+
+            <Zap
+              size={22}
+              className="text-[#2d7054]"
+            />
 
             <h2 className="font-serif text-xl font-bold text-[#2d7054]">
               Today's Action Plan
             </h2>
+
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
 
             {actionPlan.map((item, index) => {
+
               const completed = index === 3;
 
               return (
@@ -496,20 +780,26 @@ export default function WeatherPage() {
                     completed ? "opacity-60" : ""
                   }`}
                 >
+
                   <CheckCircle2
                     size={22}
                     className={
-                      completed ? "text-green-600" : "text-gray-300"
+                      completed
+                        ? "text-green-600"
+                        : "text-gray-300"
                     }
                   />
 
                   <span
                     className={`text-sm font-semibold text-[#303830] ${
-                      completed ? "line-through text-gray-400" : ""
+                      completed
+                        ? "line-through text-gray-400"
+                        : ""
                     }`}
                   >
                     {item}
                   </span>
+
                 </div>
               );
             })}
@@ -517,13 +807,17 @@ export default function WeatherPage() {
           </div>
 
           <button className="mt-5 flex items-center gap-2 rounded-xl bg-[#2d7054] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#21563f]">
+
             <Sprout size={17} />
+
             Ask AI for More Farming Advice
+
           </button>
 
         </section>
 
         {/* CROP IMPACT */}
+
         <section>
 
           <h2 className="font-serif text-2xl font-bold text-[#202820]">
@@ -531,13 +825,23 @@ export default function WeatherPage() {
           </h2>
 
           <p className="mt-1 text-sm text-gray-500">
-            Based on current conditions: Sunny 34°C · Heavy rain tomorrow ·
-            Humidity 68%
+
+            {current
+              ? `Based on current conditions: ${
+                  currentWeatherInfo.text
+                } ${Math.round(
+                  current.temperature_2m
+                )}°C · Humidity ${Math.round(
+                  current.relative_humidity_2m
+                )}%`
+              : "Based on current weather conditions"}
+
           </p>
 
           <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-4">
 
             {crops.map((crop) => (
+
               <div
                 key={crop.name}
                 className={`rounded-[22px] border p-4 ${crop.bg} ${crop.border}`}
@@ -546,17 +850,23 @@ export default function WeatherPage() {
                 <div className="flex items-start justify-between gap-2">
 
                   <div className="flex items-center gap-3">
-                    <span className="text-3xl">{crop.emoji}</span>
+
+                    <span className="text-3xl">
+                      {crop.emoji}
+                    </span>
 
                     <div>
-                      <h3 className="font-bold text-lg text-[#202820]">
+
+                      <h3 className="text-lg font-bold text-[#202820]">
                         {crop.name}
                       </h3>
 
                       <p className="text-sm text-gray-500">
                         {crop.acres}
                       </p>
+
                     </div>
+
                   </div>
 
                   <span
@@ -570,6 +880,7 @@ export default function WeatherPage() {
                 <div className="mt-4 space-y-2">
 
                   {crop.items.map((item) => {
+
                     const Icon = item.icon;
 
                     return (
@@ -586,6 +897,7 @@ export default function WeatherPage() {
                           />
 
                           <div>
+
                             <p className="text-sm font-bold text-[#303830]">
                               {item.title}
                             </p>
@@ -593,6 +905,7 @@ export default function WeatherPage() {
                             <p className="mt-1 text-xs leading-5 text-gray-500">
                               {item.text}
                             </p>
+
                           </div>
 
                         </div>
@@ -604,6 +917,7 @@ export default function WeatherPage() {
                 </div>
 
                 <div className="mt-3 rounded-2xl bg-white p-3">
+
                   <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
                     Your Action
                   </p>
@@ -611,15 +925,18 @@ export default function WeatherPage() {
                   <p className="mt-1 text-sm font-semibold leading-5 text-[#303830]">
                     {crop.action}
                   </p>
+
                 </div>
 
               </div>
             ))}
 
           </div>
+
         </section>
 
         {/* HOURLY FORECAST */}
+
         <section className="rounded-[24px] bg-white p-6 shadow-sm ring-1 ring-[#e5dfd2]">
 
           <h2 className="font-serif text-2xl font-bold text-[#202820]">
@@ -629,12 +946,13 @@ export default function WeatherPage() {
           <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
 
             {hourly.map((item) => {
+
               const Icon = item.icon;
 
               return (
                 <div
                   key={item.time}
-                  className="min-w-[72px] rounded-2xl bg-[#eae7df] px-3 py-3 text-center"
+                  className="min-w-[82px] rounded-2xl bg-[#eae7df] px-3 py-3 text-center"
                 >
 
                   <p className="text-xs font-bold text-gray-500">
@@ -665,9 +983,21 @@ export default function WeatherPage() {
             })}
 
           </div>
+
         </section>
 
       </div>
     </Layout>
+  );
+}
+
+
+/* ---------------- LOCATION ICON ---------------- */
+
+function MapPinIcon() {
+  return (
+    <span className="text-base" aria-hidden="true">
+      📍
+    </span>
   );
 }
