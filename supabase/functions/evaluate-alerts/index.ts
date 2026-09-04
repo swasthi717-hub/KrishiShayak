@@ -1,6 +1,13 @@
-// supabase/functions/evaluate-alerts/index.ts
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+console.log("ENV CHECK", {
+  SUPABASE_URL: Deno.env.get("SUPABASE_URL") ?? "MISSING",
+  SUPABASE_SERVICE_ROLE_KEY: !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  FIREBASE_PROJECT_ID: !!Deno.env.get("FIREBASE_PROJECT_ID"),
+  FIREBASE_CLIENT_EMAIL: !!Deno.env.get("FIREBASE_CLIENT_EMAIL"),
+  FIREBASE_PRIVATE_KEY: !!Deno.env.get("FIREBASE_PRIVATE_KEY"),
+  MANDI_API_KEY: !!Deno.env.get("VITE_MANDI_API_KEY"),
+});
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -25,7 +32,7 @@ const MANDI_API_URL =
 // consistently, and dropped the VITE_ prefix — that prefix means
 // "safe to expose in the browser bundle," which does NOT apply to a
 // server-side Edge Function secret like this one.
-const MANDI_API_KEY = Deno.env.get("MANDI_API_KEY");
+const MANDI_API_KEY = Deno.env.get("VITE_MANDI_API_KEY");
 
 // ------------------------------------------------------------
 // Firebase configuration

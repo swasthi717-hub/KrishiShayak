@@ -302,8 +302,12 @@ export default function SmartAlertsPage() {
   const actionAlerts = useMemo(() => alerts.filter((a) => sectionForCategory(a.category) === "action"), [alerts]);
   const notificationAlerts = useMemo(() => alerts.filter((a) => sectionForCategory(a.category) === "notification"), [alerts]);
 
+  // Only weather + market are live right now — pest_disease/yield_risk
+  // aren't evaluated by evaluate-alerts yet, so their stat cards were
+  // removed below to avoid showing a permanent "0" for something that
+  // can never fire.
   const categoryCounts = useMemo(() => {
-    const counts = { weather: 0, pest_disease: 0, market: 0, yield_risk: 0 };
+    const counts = { weather: 0, market: 0 };
     for (const a of alerts) {
       if (counts[a.category] !== undefined) counts[a.category]++;
     }
@@ -425,7 +429,7 @@ export default function SmartAlertsPage() {
         </button>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-2xl bg-[#eef5ff] p-5">
           <div className="flex items-center gap-3">
             <CloudRain size={22} className="text-blue-500" />
@@ -436,32 +440,12 @@ export default function SmartAlertsPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-[#fff0f1] p-5">
-          <div className="flex items-center gap-3">
-            <Bug size={22} className="text-red-500" />
-            <div>
-              <p className="text-2xl font-bold text-[#24352a]">{categoryCounts.pest_disease}</p>
-              <p className="text-sm text-slate-500">Pest & Disease</p>
-            </div>
-          </div>
-        </div>
-
         <div className="rounded-2xl bg-[#effbf3] p-5">
           <div className="flex items-center gap-3">
             <TrendingUp size={22} className="text-green-500" />
             <div>
               <p className="text-2xl font-bold text-[#24352a]">{categoryCounts.market}</p>
               <p className="text-sm text-slate-500">Market Price</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-[#fff7ec] p-5">
-          <div className="flex items-center gap-3">
-            <AlertTriangle size={22} className="text-orange-500" />
-            <div>
-              <p className="text-2xl font-bold text-[#24352a]">{categoryCounts.yield_risk}</p>
-              <p className="text-sm text-slate-500">Yield Risk</p>
             </div>
           </div>
         </div>
