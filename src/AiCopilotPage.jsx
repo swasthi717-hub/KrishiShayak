@@ -86,7 +86,7 @@ export default function AiCopilotPage() {
     {
       sender: "ai",
       text:
-        "नमस्ते! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
+        "नमस्ते! I'm KrishiSahayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
       time: "Now",
     },
   ]);

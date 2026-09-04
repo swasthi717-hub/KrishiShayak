@@ -86,7 +86,7 @@ export async function getDiseaseExplanation(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a friendly farming assistant helping Indian farmers.
+You are KrishiSahayak, a friendly farming assistant helping Indian farmers.
 
 Respond ONLY in ${language}.
 
@@ -129,7 +129,7 @@ export async function getChatResponse(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a friendly farming assistant helping Indian farmers.
+You are KrishiSahayak, a friendly farming assistant helping Indian farmers.
 
 The farmer's preferred language is ${language}.
 
@@ -165,7 +165,7 @@ Important:
 - If a chemical treatment is discussed, tell the farmer to follow the product label and consult a local agricultural officer.
 - If you do not have enough information, say so instead of making up facts.
 
-If the question is not related to farming, politely explain that KrishiShayak is mainly designed for farming-related questions.
+If the question is not related to farming, politely explain that KrishiSahayak is mainly designed for farming-related questions.
 
 Farmer's question:
 ${question}
@@ -220,7 +220,7 @@ export async function getActionPlan(
     : "";
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers plan their day.
+You are KrishiSahayak, a farming assistant helping Indian farmers plan their day.
 
 Respond ONLY in ${language}.
 
@@ -347,7 +347,7 @@ Calculated trend: ${trend}
     .join("\n");
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers decide when to sell crops.
+You are KrishiSahayak, a farming assistant helping Indian farmers decide when to sell crops.
 
 Respond ONLY in ${language}.
 
@@ -413,7 +413,7 @@ export async function getYieldExplanation(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers understand a yield prediction.
+You are KrishiSahayak, a farming assistant helping Indian farmers understand a yield prediction.
 
 Respond ONLY in ${language}.
 
