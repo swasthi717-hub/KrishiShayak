@@ -6,7 +6,10 @@ import {
   Send,
   Star,
   Loader2,
+  Square,
 } from "lucide-react";
+
+import { useLocation } from "react-router-dom";
 
 import Layout from "./Layout.jsx";
 
@@ -15,6 +18,8 @@ import { getChatResponse } from "./services/gemini.js";
 import {
   startListening,
   stopListening,
+  speakResponse,
+  stopSpeaking,
 } from "./services/voiceAssistant.js";
 
 import { supabase } from "./lib/supabase";
@@ -51,17 +56,43 @@ const LANGUAGE_CODES = {
   or: "or-IN",
 };
 
+const LANGUAGE_NAMES = {
+  en: "English",
+  hi: "हिंदी",
+  mr: "मराठी",
+  ta: "தமிழ்",
+  te: "తెలుగు",
+  kn: "ಕನ್ನಡ",
+  ml: "മലയാളം",
+  gu: "ગુજરાતી",
+  pa: "ਪੰਜਾਬੀ",
+  bn: "বাংলা",
+  or: "ଓଡ଼ିଆ",
+};
+
+const SUPPORTED_LANGUAGES = Object.keys(LANGUAGE_NAMES);
+
 export default function AiCopilotPage() {
+  const location = useLocation();
+
   const [messages, setMessages] = useState([
     {
       sender: "ai",
-      text: "नमस्ते! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices.",
+      text:
+        "नमस्ते! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
       time: "Now",
     },
   ]);
 
   const [input, setInput] = useState("");
-  const [preferredLanguage, setPreferredLanguage] = useState("hi");
+
+  // User's saved language from Supabase
+  const [preferredLanguage, setPreferredLanguage] =
+    useState("hi");
+
+  // Language currently being used by the Copilot
+  const [selectedLanguage, setSelectedLanguage] =
+    useState("hi");
 
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
@@ -99,7 +130,10 @@ export default function AiCopilotPage() {
         }
 
         if (data?.preferred_language) {
-          setPreferredLanguage(data.preferred_language);
+          const language = data.preferred_language;
+
+          setPreferredLanguage(language);
+          setSelectedLanguage(language);
         }
       } catch (error) {
         console.error(
@@ -119,7 +153,7 @@ export default function AiCopilotPage() {
    */
 
   async function sendMessage(text) {
-    const trimmed = text.trim();
+    const trimmed = String(text || "").trim();
 
     if (!trimmed || loading) {
       return;
@@ -142,7 +176,7 @@ export default function AiCopilotPage() {
     try {
       const response = await getChatResponse(
         trimmed,
-        preferredLanguage
+        selectedLanguage
       );
 
       setMessages((prev) => [
@@ -151,9 +185,18 @@ export default function AiCopilotPage() {
           sender: "ai",
           text: response,
           time: "Now",
-          language: preferredLanguage,
+          language: selectedLanguage,
         },
       ]);
+
+      /*
+       * Speak AI response
+       */
+
+      speakResponse(
+        response,
+        LANGUAGE_CODES[selectedLanguage] || "hi-IN"
+      );
 
       /*
        * Save conversation history
@@ -171,13 +214,13 @@ export default function AiCopilotPage() {
               user_id: user.id,
               role: "user",
               message: trimmed,
-              language_code: preferredLanguage,
+              language_code: selectedLanguage,
             },
             {
               user_id: user.id,
               role: "assistant",
               message: response,
-              language_code: preferredLanguage,
+              language_code: selectedLanguage,
             },
           ]);
 
@@ -194,12 +237,15 @@ export default function AiCopilotPage() {
         error
       );
 
+      const errorMessage =
+        error?.message ||
+        "Unable to connect to the AI assistant.";
+
       setMessages((prev) => [
         ...prev,
         {
           sender: "ai",
-          text:
-            "Sorry, I could not connect to the AI assistant. Please try again.",
+          text: `AI assistant error: ${errorMessage}`,
           time: "Now",
         },
       ]);
@@ -210,7 +256,30 @@ export default function AiCopilotPage() {
 
   /*
    * ---------------------------------------------------------
-   * VOICE INPUT
+   * HANDLE FARM DASHBOARD → COPILOT
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    const prompt = location.state?.prompt;
+
+    if (!prompt) {
+      return;
+    }
+
+    // Prevent the same prompt from being sent again on refresh
+    window.history.replaceState(
+      {},
+      document.title,
+      window.location.pathname
+    );
+
+    sendMessage(prompt);
+  }, [location.state]);
+
+  /*
+   * ---------------------------------------------------------
+   * MICROPHONE
    * ---------------------------------------------------------
    */
 
@@ -226,7 +295,7 @@ export default function AiCopilotPage() {
     }
 
     const language =
-      LANGUAGE_CODES[preferredLanguage] || "hi-IN";
+      LANGUAGE_CODES[selectedLanguage] || "hi-IN";
 
     setListening(true);
 
@@ -250,9 +319,7 @@ export default function AiCopilotPage() {
         setInput(transcript);
         setListening(false);
 
-        /*
-         * Send the recognized speech to Gemini.
-         */
+        // Automatically send recognized speech
         sendMessage(transcript);
       },
 
@@ -288,21 +355,11 @@ export default function AiCopilotPage() {
    * ---------------------------------------------------------
    */
 
-  function speakMessage(text) {
-    if (!("speechSynthesis" in window)) {
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-
-    const speech =
-      new SpeechSynthesisUtterance(text);
-
-    speech.lang =
-      LANGUAGE_CODES[preferredLanguage] ||
-      "hi-IN";
-
-    window.speechSynthesis.speak(speech);
+  function handleSpeak(text) {
+    speakResponse(
+      text,
+      LANGUAGE_CODES[selectedLanguage] || "hi-IN"
+    );
   }
 
   /*
@@ -314,6 +371,7 @@ export default function AiCopilotPage() {
   useEffect(() => {
     return () => {
       stopListening();
+      stopSpeaking();
 
       if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
@@ -347,12 +405,41 @@ export default function AiCopilotPage() {
 
           </div>
 
+          {/* LANGUAGE SELECTOR */}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+
+            <span className="text-xs font-semibold text-slate-500">
+              Voice language:
+            </span>
+
+            <select
+              value={selectedLanguage}
+              onChange={(e) =>
+                setSelectedLanguage(e.target.value)
+              }
+              className="rounded-full border border-[#e5dfd2] bg-white px-3 py-1.5 text-xs font-medium text-[#24352a] outline-none"
+            >
+              {SUPPORTED_LANGUAGES.map((code) => (
+                <option
+                  key={code}
+                  value={code}
+                >
+                  {LANGUAGE_NAMES[code]}
+                </option>
+              ))}
+            </select>
+
+          </div>
+
           {/* QUICK CHIPS */}
+
           <div className="mt-5 flex flex-wrap gap-2">
 
             {QUICK_CHIPS.map((chip) => (
               <button
                 key={chip}
+                type="button"
                 onClick={() => sendMessage(chip)}
                 disabled={loading}
                 className="rounded-full bg-white px-4 py-2 text-sm font-medium text-[#24352a] shadow-sm hover:bg-[#e7edda] disabled:opacity-60"
@@ -364,12 +451,13 @@ export default function AiCopilotPage() {
           </div>
 
           {/* CHAT */}
+
           <div className="mt-5 space-y-4">
 
             {messages.map((msg, i) =>
               msg.sender === "ai" ? (
                 <div
-                  key={i}
+                  key={`${msg.sender}-${i}`}
                   className="flex items-start gap-2.5"
                 >
 
@@ -379,7 +467,7 @@ export default function AiCopilotPage() {
 
                   <div>
 
-                    <div className="max-w-xl rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-[#24352a] shadow-sm">
+                    <div className="max-w-xl whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-sm text-[#24352a] shadow-sm">
                       {msg.text}
                     </div>
 
@@ -392,7 +480,7 @@ export default function AiCopilotPage() {
                       <button
                         type="button"
                         onClick={() =>
-                          speakMessage(msg.text)
+                          handleSpeak(msg.text)
                         }
                         className="flex items-center gap-1 hover:text-[#2f7357]"
                       >
@@ -407,10 +495,10 @@ export default function AiCopilotPage() {
                 </div>
               ) : (
                 <div
-                  key={i}
+                  key={`${msg.sender}-${i}`}
                   className="flex justify-end"
                 >
-                  <div className="max-w-xl rounded-2xl rounded-tr-sm bg-[#214d34] px-4 py-3 text-sm text-white shadow-sm">
+                  <div className="max-w-xl whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-[#214d34] px-4 py-3 text-sm text-white shadow-sm">
                     {msg.text}
                   </div>
                 </div>
@@ -419,17 +507,21 @@ export default function AiCopilotPage() {
 
             {loading && (
               <div className="flex items-center gap-2 text-sm text-slate-500">
+
                 <Loader2
                   size={16}
                   className="animate-spin"
                 />
+
                 AI is thinking...
+
               </div>
             )}
 
           </div>
 
           {/* INPUT */}
+
           <div className="mt-6 flex items-center gap-2">
 
             <button
@@ -445,9 +537,13 @@ export default function AiCopilotPage() {
                 listening
                   ? "bg-orange-500 hover:bg-orange-600"
                   : "bg-[#1f5b3d] hover:bg-[#173b27]"
-              }`}
+              } disabled:opacity-60`}
             >
-              <Mic size={18} />
+              {listening ? (
+                <Square size={16} />
+              ) : (
+                <Mic size={18} />
+              )}
             </button>
 
             <input
@@ -483,21 +579,36 @@ export default function AiCopilotPage() {
 
           </div>
 
+          {/* STOP VOICE RESPONSE */}
+
+          <button
+            type="button"
+            onClick={stopSpeaking}
+            className="mt-3 text-xs text-slate-400 hover:text-[#1f5b3d]"
+          >
+            Stop voice response
+          </button>
+
         </div>
 
         {/* RIGHT COLUMN */}
+
         <div className="space-y-5">
 
           {/* SAMPLE QUESTIONS */}
+
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
             <p className="flex items-center gap-2 font-serif text-base font-bold text-[#24352a]">
+
               <Star
                 size={16}
                 className="text-[#c9a24b]"
                 fill="#c9a24b"
               />
+
               Sample Questions
+
             </p>
 
             <div className="mt-3 space-y-2">
@@ -505,6 +616,7 @@ export default function AiCopilotPage() {
               {SAMPLE_QUESTIONS.map((q) => (
                 <button
                   key={q}
+                  type="button"
                   onClick={() => sendMessage(q)}
                   disabled={loading}
                   className="block w-full rounded-xl bg-[#f7f5ee] px-3 py-2.5 text-left text-sm text-[#24352a] hover:bg-[#e7edda] disabled:opacity-60"
@@ -518,6 +630,7 @@ export default function AiCopilotPage() {
           </div>
 
           {/* LANGUAGE */}
+
           <div className="rounded-2xl bg-[#e7edda] p-5">
 
             <p className="font-serif text-base font-bold text-[#24352a]">
@@ -525,15 +638,28 @@ export default function AiCopilotPage() {
             </p>
 
             <p className="mt-2 text-sm text-[#3d4d40]">
-              {getLanguageName(
-                preferredLanguage
-              )}
+              {LANGUAGE_NAMES[preferredLanguage] ||
+                "Hindi"}
             </p>
 
             <p className="mt-2 text-xs text-slate-500">
-              The Copilot uses your language preference saved in
-              your profile. You don't need to select it again.
+              Your saved profile language is used as
+              the default. You can change the voice
+              language above when needed.
             </p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+
+              {SUPPORTED_LANGUAGES.map((code) => (
+                <span
+                  key={code}
+                  className="rounded-full bg-white px-3 py-1 text-sm font-medium text-[#24352a] shadow-sm"
+                >
+                  {LANGUAGE_NAMES[code]}
+                </span>
+              ))}
+
+            </div>
 
           </div>
 
@@ -542,22 +668,4 @@ export default function AiCopilotPage() {
       </div>
     </Layout>
   );
-}
-
-function getLanguageName(code) {
-  const names = {
-    en: "English",
-    hi: "हिंदी",
-    mr: "मराठी",
-    ta: "தமிழ்",
-    te: "తెలుగు",
-    kn: "ಕನ್ನಡ",
-    ml: "മലയാളം",
-    gu: "ગુજરાતી",
-    pa: "ਪੰਜਾਬੀ",
-    bn: "বাংলা",
-    or: "ଓଡ଼ିଆ",
-  };
-
-  return names[code] || "Hindi";
 }

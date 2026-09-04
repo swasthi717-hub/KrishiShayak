@@ -1,12 +1,13 @@
-
 import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
+
 import {
   requestAndSaveFCMToken,
-  listenForForegroundMessages
+  listenForForegroundMessages,
 } from "./firebase";
+
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import ResetPassword from "./ResetPassword";
@@ -19,7 +20,7 @@ import MandiMarketPage from "./MandiMarketPage.jsx";
 import FarmDashboard from "./FarmDashboard.jsx";
 import SmartAlertsPage from "./SmartAlertsPage.jsx";
 import ProfilePage from "./ProfilePage.jsx";
-
+import OnboardingPage from "./OnboardingPage.jsx";
 
 /*
  * Registers the current user's device for Firebase
@@ -32,21 +33,32 @@ function FCMRegistration() {
     if (!user?.id) return;
 
     requestAndSaveFCMToken(user.id);
-    const unsubscribe = listenForForegroundMessages((title, body) => {
-      new Notification(title || "KrishiSahayak Alert", {
-        body: body || "You have a new agricultural alert.",
-        icon: "/favicon.ico",
-      });
-    });
+
+    const unsubscribe = listenForForegroundMessages(
+      (title, body) => {
+        if ("Notification" in window) {
+          new Notification(
+            title || "KrishiSahayak Alert",
+            {
+              body:
+                body ||
+                "You have a new agricultural alert.",
+              icon: "/favicon.ico",
+            }
+          );
+        }
+      }
+    );
+
     return () => {
-      // Firebase's onMessage listener should be unsubscribed here
-      if (unsubscribe) unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, [user?.id]);
 
   return null;
 }
-
 
 export default function App() {
   return (
@@ -62,6 +74,16 @@ export default function App() {
           <Route
             path="/"
             element={<LandingPage />}
+          />
+
+          {/* Onboarding Page */}
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute>
+                <OnboardingPage />
+              </ProtectedRoute>
+            }
           />
 
           {/* Home / Main Dashboard */}

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+
 import {
   Wheat,
   TrendingUp,
@@ -10,184 +11,189 @@ import {
   Mic,
 } from "lucide-react";
 
+import { useNavigate } from "react-router-dom";
+
 import Layout from "./Layout.jsx";
 
 import {
   loadYieldModel,
   predictYield,
   estimateProfit,
-} from "./services/yieldprediction";
+  getYieldFactors,
+} from "./services/yieldprediction.js";
+
+const FARM = {
+  name: "Ramesh Farm",
+  crop: "Cotton",
+  season: "Kharif",
+  state: "Maharashtra",
+  area: 4.2,
+  pesticide: 50,
+  marketPricePerQuintal: 1900,
+  costPerAcre: 15000,
+};
 
 export default function FarmDashboardPage() {
+  const navigate = useNavigate();
+
+  // =========================================================
+  // WHAT-IF INPUTS
+  // =========================================================
+
   const [rainfall, setRainfall] = useState(50);
   const [fertilizer, setFertilizer] = useState(40);
 
-  const [predictedYield, setPredictedYield] = useState(22);
-  const [predictedProfit, setPredictedProfit] = useState(22 * 1900);
-
   const [modelLoading, setModelLoading] = useState(true);
+  const [predictionLoading, setPredictionLoading] =
+    useState(false);
+  const [modelError, setModelError] = useState("");
 
-  /*
-   * ---------------------------------------------------------
-   * FARM / MODEL INPUTS
-   * ---------------------------------------------------------
-   *
-   * These values are used because the ONNX model expects:
-   *
-   * crop
-   * season
-   * state
-   * area
-   * rainfall
-   * fertilizer
-   * pesticide
-   *
-   * Rainfall and fertilizer are controlled by the sliders.
-   */
+  const [predictedYield, setPredictedYield] =
+    useState(null);
 
-  const crop = "Cotton";
-  const season = "Kharif";
-  const state = "Maharashtra";
-  const area = 4.2;
-  const pesticide = 50;
+  const [predictedProfit, setPredictedProfit] =
+    useState(null);
 
-  /*
-   * ---------------------------------------------------------
-   * LOAD YIELD MODEL
-   * ---------------------------------------------------------
-   */
+  const [yieldFactors, setYieldFactors] =
+    useState(null);
+
+  // Used to prevent an older async prediction from
+  // overwriting a newer slider prediction.
+  const predictionRequestId = useRef(0);
+
+  // =========================================================
+  // LOAD MODEL
+  // =========================================================
 
   useEffect(() => {
+    let cancelled = false;
+
     async function initializeModel() {
       try {
         setModelLoading(true);
 
         await loadYieldModel();
+
+        if (cancelled) return;
+
+        try {
+          const factors = await getYieldFactors();
+
+          if (!cancelled) {
+            setYieldFactors(factors);
+          }
+        } catch (error) {
+          console.warn(
+            "Could not load yield factors:",
+            error
+          );
+        }
       } catch (error) {
         console.error(
           "Failed to load yield model:",
           error
         );
+
+        if (!cancelled) {
+          setModelError(
+            error?.message ||
+              "Unable to load the yield prediction model."
+          );
+        }
       } finally {
-        setModelLoading(false);
+        if (!cancelled) {
+          setModelLoading(false);
+        }
       }
     }
 
     initializeModel();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  /*
-   * ---------------------------------------------------------
-   * RUN YIELD PREDICTION
-   * ---------------------------------------------------------
-   *
-   * Runs every time rainfall or fertilizer changes.
-   */
+  // =========================================================
+  // RUN PREDICTION
+  // =========================================================
 
   useEffect(() => {
-    if (modelLoading) return;
+    if (modelLoading) {
+      return;
+    }
+
+    const requestId =
+      ++predictionRequestId.current;
 
     let cancelled = false;
 
     async function runPrediction() {
+      setPredictionLoading(true);
+      setModelError("");
+
       try {
-        const inputs = {
-          crop,
-          season,
-          state,
-          area,
+        const result = await predictYield({
+          crop: FARM.crop,
+          season: FARM.season,
+          state: FARM.state,
+          area: FARM.area,
           rainfall,
           fertilizer,
-          pesticide,
-        };
+          pesticide: FARM.pesticide,
+        });
 
-        const result = await predictYield(inputs);
+        const numericYield = Number(result);
 
-        /*
-         * Support either:
-         *
-         * predictYield() -> number
-         *
-         * or
-         *
-         * predictYield() -> { predictedYield: number }
-         */
-
-        const yieldValue =
-          typeof result === "number"
-            ? result
-            : Number(
-                result?.predictedYield ??
-                  result?.yield ??
-                  0
-              );
-
-        if (!Number.isFinite(yieldValue)) {
+        if (!Number.isFinite(numericYield)) {
           throw new Error(
-            "Yield prediction returned an invalid number"
+            "Yield model returned an invalid number."
           );
         }
 
-        /*
-         * Market price used for the What-If calculation.
-         *
-         * This is NOT Gemini.
-         * It is simply the supplied/reference price used
-         * to calculate estimated profit.
-         */
-
-        const marketPricePerQuintal = 1900;
-
-        const profitValue = estimateProfit(
-          yieldValue,
-          marketPricePerQuintal,
-          area,
-          15000
+        const profit = estimateProfit(
+          numericYield,
+          FARM.marketPricePerQuintal,
+          FARM.area,
+          FARM.costPerAcre
         );
 
-        if (!Number.isFinite(profitValue)) {
-          throw new Error(
-            "Profit calculation returned an invalid number"
-          );
+        if (
+          cancelled ||
+          requestId !== predictionRequestId.current
+        ) {
+          return;
         }
 
-        if (cancelled) return;
-
-        setPredictedYield(yieldValue);
-        setPredictedProfit(profitValue);
+        setPredictedYield(numericYield);
+        setPredictedProfit(profit);
       } catch (error) {
         console.error(
           "Yield prediction failed:",
           error
         );
 
-        /*
-         * Safe local fallback.
-         *
-         * This prevents NaN/undefined from appearing if
-         * the ONNX model cannot be loaded or returns an
-         * invalid value.
-         *
-         * The fallback is only used when the model fails.
-         */
+        if (
+          cancelled ||
+          requestId !== predictionRequestId.current
+        ) {
+          return;
+        }
 
-        const fallbackYield =
-          22 +
-          (Number(rainfall) - 50) * 0.08 +
-          (Number(fertilizer) - 40) * 0.03;
+        setPredictedYield(null);
+        setPredictedProfit(null);
 
-        const safeYield = Math.max(
-          0,
-          Number(fallbackYield)
+        setModelError(
+          error?.message ||
+            "Unable to calculate the yield prediction."
         );
-
-        const fallbackProfit =
-          safeYield * 1900 - area * 15000;
-
-        if (cancelled) return;
-
-        setPredictedYield(safeYield);
-        setPredictedProfit(fallbackProfit);
+      } finally {
+        if (
+          !cancelled &&
+          requestId === predictionRequestId.current
+        ) {
+          setPredictionLoading(false);
+        }
       }
     }
 
@@ -196,19 +202,67 @@ export default function FarmDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [
-    rainfall,
-    fertilizer,
-    modelLoading,
-  ]);
+  }, [modelLoading, rainfall, fertilizer]);
+
+  // =========================================================
+  // ASK AI → OPEN COPILOT
+  // =========================================================
+
+  function handleAskAI() {
+    if (
+      !Number.isFinite(Number(predictedYield)) ||
+      !Number.isFinite(Number(predictedProfit))
+    ) {
+      return;
+    }
+
+    const prompt = `
+Help me optimize my current farm simulation.
+
+Farm:
+${FARM.name}
+
+Crop:
+${FARM.crop}
+
+Area:
+${FARM.area} acres
+
+State:
+${FARM.state}
+
+Current simulator inputs:
+- Rainfall: ${rainfall} mm
+- Fertilizer: ${fertilizer}%
+
+Current model output:
+- Estimated yield: ${Number(predictedYield).toFixed(2)} quintals
+- Expected profit: ₹${Math.round(
+      predictedProfit
+    ).toLocaleString("en-IN")}
+
+Please explain:
+1. What the current result means.
+2. Whether the current rainfall and fertilizer settings look reasonable.
+3. What practical changes the farmer could consider.
+4. Any important caution.
+
+Do not invent weather, market prices, pesticide dosages, or guaranteed outcomes.
+Keep the advice simple and practical for an Indian farmer.
+`;
+
+    navigate("/ai-copilot", {
+      state: {
+        prompt,
+      },
+    });
+  }
 
   return (
     <Layout title="Farm Dashboard">
       <div className="space-y-6">
 
-        {/* =====================================================
-            PAGE HEADER
-        ====================================================== */}
+        {/* HEADER */}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="font-serif text-2xl font-bold text-[#24352a]">
@@ -216,13 +270,19 @@ export default function FarmDashboardPage() {
           </h2>
 
           <div className="rounded-full bg-white px-4 py-2 text-sm text-slate-500 shadow-sm ring-1 ring-[#e5dfd2]">
-            Ramesh Farm · 4.2 Acres · Nashik
+            {FARM.name} · {FARM.area} Acres · Nashik
           </div>
         </div>
 
-        {/* =====================================================
-            TOP STAT CARDS
-        ====================================================== */}
+        {/* MODEL ERROR */}
+
+        {modelError && (
+          <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
+            {modelError}
+          </div>
+        )}
+
+        {/* TOP STAT CARDS */}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
@@ -307,13 +367,9 @@ export default function FarmDashboardPage() {
           </div>
         </div>
 
-        {/* =====================================================
-            YIELD HISTORY + FACTORS
-        ====================================================== */}
+        {/* HISTORY + FACTORS */}
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.7fr_0.8fr]">
-
-          {/* YIELD HISTORY */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
@@ -459,8 +515,6 @@ export default function FarmDashboardPage() {
             </div>
           </div>
 
-          {/* KEY YIELD FACTORS */}
-
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
               Key Yield Factors
@@ -481,22 +535,23 @@ export default function FarmDashboardPage() {
 
               <Factor
                 label="Pest Control"
-                value={80}
+                value={FARM.pesticide}
                 color="bg-[#2f7357]"
               />
 
               <Factor
                 label="Weather Impact"
-                value={45}
+                value={Math.max(
+                  0,
+                  Math.min(100, 100 - rainfall)
+                )}
                 color="bg-orange-500"
               />
             </div>
           </div>
         </div>
 
-        {/* =====================================================
-            WHAT-IF SIMULATOR
-        ====================================================== */}
+        {/* WHAT IF */}
 
         <div className="rounded-3xl bg-[#d9f4dc] p-6">
 
@@ -547,9 +602,15 @@ export default function FarmDashboardPage() {
 
               <div className="mt-5">
                 <p className="font-serif text-3xl font-bold text-[#2f7357]">
-                  {Number.isFinite(Number(predictedYield))
-                    ? Number(predictedYield).toFixed(1)
-                    : "0.0"}{" "}
+                  {predictionLoading
+                    ? "Calculating..."
+                    : Number.isFinite(
+                        Number(predictedYield)
+                      )
+                      ? Number(
+                          predictedYield
+                        ).toFixed(1)
+                      : "0.0"}{" "}
                   Q
                 </p>
 
@@ -563,15 +624,17 @@ export default function FarmDashboardPage() {
               <div>
                 <p className="text-2xl font-bold text-green-600">
                   ₹
-                  {Number.isFinite(
-                    Number(predictedProfit)
-                  )
-                    ? Number(
-                        predictedProfit
-                      ).toLocaleString("en-IN", {
-                        maximumFractionDigits: 0,
-                      })
-                    : "0"}
+                  {predictionLoading
+                    ? "Calculating..."
+                    : Number.isFinite(
+                        Number(predictedProfit)
+                      )
+                      ? Number(
+                          predictedProfit
+                        ).toLocaleString("en-IN", {
+                          maximumFractionDigits: 0,
+                        })
+                      : "0"}
                 </p>
 
                 <p className="text-sm text-slate-500">
@@ -583,11 +646,26 @@ export default function FarmDashboardPage() {
 
               <button
                 type="button"
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-[#2f7357] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#245d46]"
+                onClick={handleAskAI}
+                disabled={
+                  predictionLoading ||
+                  modelLoading ||
+                  !Number.isFinite(
+                    Number(predictedYield)
+                  ) ||
+                  !Number.isFinite(
+                    Number(predictedProfit)
+                  )
+                }
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-[#2f7357] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#245d46] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Mic size={17} />
                 Ask AI to Optimize
               </button>
+
+              <p className="mt-2 text-center text-xs text-slate-400">
+                Opens AI Copilot with your current simulation
+              </p>
             </div>
           </div>
         </div>
@@ -604,13 +682,21 @@ export default function FarmDashboardPage() {
   );
 }
 
-/*
- * =============================================================
- * FACTOR COMPONENT
- * =============================================================
- */
+// =============================================================
+// FACTOR
+// =============================================================
 
-function Factor({ label, value, color }) {
+function Factor({
+  label,
+  value,
+  color,
+}) {
+  const numericValue = Number(value);
+
+  const safeValue = Number.isFinite(numericValue)
+    ? Math.max(0, Math.min(100, numericValue))
+    : 0;
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -619,25 +705,25 @@ function Factor({ label, value, color }) {
         </p>
 
         <p className="text-sm font-bold text-[#24352a]">
-          {value}%
+          {Math.round(safeValue)}%
         </p>
       </div>
 
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e9e5dc]">
         <div
           className={`h-full rounded-full ${color}`}
-          style={{ width: `${value}%` }}
+          style={{
+            width: `${safeValue}%`,
+          }}
         />
       </div>
     </div>
   );
 }
 
-/*
- * =============================================================
- * SLIDER COMPONENT
- * =============================================================
- */
+// =============================================================
+// SLIDER
+// =============================================================
 
 function SliderControl({
   icon,
@@ -649,7 +735,6 @@ function SliderControl({
   return (
     <div>
       <div className="flex items-center justify-between">
-
         <div className="flex items-center gap-2">
           <span className="text-[#2f7357]">
             {icon}

@@ -1,27 +1,97 @@
+// src/services/yieldprediction.js
+
 import * as ort from "onnxruntime-web";
 
 let session = null;
 let mappings = null;
+let loadingPromise = null;
+
+// =============================================================
+// LOAD MODEL
+// =============================================================
 
 export async function loadYieldModel() {
-  session = await ort.InferenceSession.create(
-    "/models/yield_model.onnx"
-  );
-
-  const response = await fetch("/models/mappings.json");
-
-  if (!response.ok) {
-    throw new Error("Failed to load yield model mappings");
+  if (session && mappings) {
+    return;
   }
 
-  mappings = await response.json();
+  if (loadingPromise) {
+    return loadingPromise;
+  }
+
+  loadingPromise = (async () => {
+    try {
+      const [loadedSession, mappingsResponse] =
+        await Promise.all([
+          ort.InferenceSession.create(
+            "/models/yield_model.onnx",
+            {
+              executionProviders: ["wasm"],
+            }
+          ),
+          fetch("/models/mappings.json"),
+        ]);
+
+      if (!mappingsResponse.ok) {
+        throw new Error(
+          `Unable to load mappings.json (${mappingsResponse.status})`
+        );
+      }
+
+      const loadedMappings =
+        await mappingsResponse.json();
+
+      if (!loadedMappings?.crop_mapping) {
+        throw new Error(
+          "mappings.json is missing crop_mapping"
+        );
+      }
+
+      if (!loadedMappings?.season_mapping) {
+        throw new Error(
+          "mappings.json is missing season_mapping"
+        );
+      }
+
+      if (!loadedMappings?.state_mapping) {
+        throw new Error(
+          "mappings.json is missing state_mapping"
+        );
+      }
+
+      session = loadedSession;
+      mappings = loadedMappings;
+
+      console.log("Yield model loaded successfully");
+      console.log("Input names:", session.inputNames);
+      console.log("Output names:", session.outputNames);
+      console.log(
+        "Input metadata:",
+        session.inputMetadata
+      );
+
+      return session;
+    } catch (error) {
+      session = null;
+      mappings = null;
+
+      console.error(
+        "Failed to load yield model:",
+        error
+      );
+
+      throw error;
+    } finally {
+      loadingPromise = null;
+    }
+  })();
+
+  return loadingPromise;
 }
 
-/*
- * ---------------------------------------------------------
- * YIELD PREDICTION
- * ---------------------------------------------------------
- */
+// =============================================================
+// PREDICT
+// =============================================================
 
 export async function predictYield({
   crop = "Cotton",
@@ -34,27 +104,66 @@ export async function predictYield({
 }) {
   if (!session || !mappings) {
     throw new Error(
-      "Yield model not loaded. Call loadYieldModel() first."
+      "Yield model is not loaded. Call loadYieldModel() first."
     );
   }
 
+  const numericArea = Number(area);
+  const numericRainfall = Number(rainfall);
+  const numericFertilizer = Number(fertilizer);
+  const numericPesticide = Number(pesticide);
+
+  if (!Number.isFinite(numericArea)) {
+    throw new Error("Invalid farm area");
+  }
+
+  if (!Number.isFinite(numericRainfall)) {
+    throw new Error("Invalid rainfall");
+  }
+
+  if (!Number.isFinite(numericFertilizer)) {
+    throw new Error("Invalid fertilizer value");
+  }
+
+  if (!Number.isFinite(numericPesticide)) {
+    throw new Error("Invalid pesticide value");
+  }
+
   const cropEncoded =
-    mappings.crop_mapping?.[crop] ?? 0;
+    Number(mappings.crop_mapping?.[crop]);
 
   const seasonEncoded =
-    mappings.season_mapping?.[season] ?? 0;
+    Number(mappings.season_mapping?.[season]);
 
   const stateEncoded =
-    mappings.state_mapping?.[state] ?? 0;
+    Number(mappings.state_mapping?.[state]);
+
+  if (!Number.isFinite(cropEncoded)) {
+    throw new Error(
+      `Crop "${crop}" is not present in mappings.json`
+    );
+  }
+
+  if (!Number.isFinite(seasonEncoded)) {
+    throw new Error(
+      `Season "${season}" is not present in mappings.json`
+    );
+  }
+
+  if (!Number.isFinite(stateEncoded)) {
+    throw new Error(
+      `State "${state}" is not present in mappings.json`
+    );
+  }
 
   const inputArray = new Float32Array([
-    Number(cropEncoded),
-    Number(seasonEncoded),
-    Number(stateEncoded),
-    Number(area),
-    Number(rainfall),
-    Number(fertilizer),
-    Number(pesticide),
+    cropEncoded,
+    seasonEncoded,
+    stateEncoded,
+    numericArea,
+    numericRainfall,
+    numericFertilizer,
+    numericPesticide,
   ]);
 
   const inputTensor = new ort.Tensor(
@@ -63,32 +172,43 @@ export async function predictYield({
     [1, 7]
   );
 
+  const inputName = session.inputNames[0];
+  const outputName = session.outputNames[0];
+
+  if (!inputName || !outputName) {
+    throw new Error(
+      "Yield model does not expose expected input/output tensors"
+    );
+  }
+
   const feeds = {
-    [session.inputNames[0]]: inputTensor,
+    [inputName]: inputTensor,
   };
 
   const results = await session.run(feeds);
 
-  const output = results[session.outputNames[0]];
+  const output = results[outputName];
 
-  if (!output || output.data.length === 0) {
-    throw new Error("Yield model returned no prediction");
+  if (!output?.data?.length) {
+    throw new Error(
+      "Yield model returned no prediction"
+    );
   }
 
   const predictedYield = Number(output.data[0]);
 
   if (!Number.isFinite(predictedYield)) {
-    throw new Error("Yield model returned an invalid prediction");
+    throw new Error(
+      "Yield model returned an invalid prediction"
+    );
   }
 
   return predictedYield;
 }
 
-/*
- * ---------------------------------------------------------
- * PROFIT ESTIMATION
- * ---------------------------------------------------------
- */
+// =============================================================
+// PROFIT ESTIMATION
+// =============================================================
 
 export function estimateProfit(
   predictedYield,
@@ -107,20 +227,34 @@ export function estimateProfit(
     !Number.isFinite(area) ||
     !Number.isFinite(cost)
   ) {
-    throw new Error("Invalid values supplied for profit calculation");
+    throw new Error(
+      "Invalid values supplied for profit calculation"
+    );
   }
 
+  /*
+   * This assumes the ONNX model output is TOTAL farm yield.
+   *
+   * If the training target was yield per acre,
+   * revenue would need to multiply yield by area.
+   */
   const revenue = yieldValue * marketPrice;
   const totalCost = cost * area;
 
-  return revenue - totalCost;
+  const profit = revenue - totalCost;
+
+  if (!Number.isFinite(profit)) {
+    throw new Error(
+      "Profit calculation produced an invalid number"
+    );
+  }
+
+  return profit;
 }
 
-/*
- * ---------------------------------------------------------
- * YIELD FACTORS
- * ---------------------------------------------------------
- */
+// =============================================================
+// YIELD FACTORS
+// =============================================================
 
 export async function getYieldFactors() {
   const response = await fetch(
@@ -128,7 +262,9 @@ export async function getYieldFactors() {
   );
 
   if (!response.ok) {
-    throw new Error("Failed to load yield factors");
+    throw new Error(
+      `Unable to load yield factors (${response.status})`
+    );
   }
 
   return response.json();

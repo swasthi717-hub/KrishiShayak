@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+
 import {
   Camera,
   Upload,
@@ -8,6 +9,8 @@ import {
   Loader2,
   Save,
   Volume2,
+  ScanSearch,
+  AlertCircle,
 } from "lucide-react";
 
 import Layout from "./Layout.jsx";
@@ -15,17 +18,12 @@ import Layout from "./Layout.jsx";
 import {
   loadDiseaseModel,
   detectDisease,
-} from "./services/diseaseDetection";
+} from "./services/diseasedetection.js";
 
 import { getDiseaseExplanation } from "./services/gemini.js";
 
 import { supabase } from "./lib/supabase";
 
-// FIX: this was the missing link between the offline sync engine and any
-// actual form. queueTableWrite already existed and worked, but nothing
-// called it — the save function below used to insert directly into
-// Supabase, which meant zero offline support and it also targeted a
-// table (`disease_predictions`) that isn't in any migration.
 import { queueTableWrite } from "./sync/queueAction";
 
 const TIPS = [
@@ -42,8 +40,6 @@ const SEVERITY_THEME = {
   Severe: "bg-red-100 text-red-700",
 };
 
-// disease_reports.notes stores a string like "Detected: X (87.5% confidence)"
-// — this pulls the number back out for display purposes only.
 function parseConfidenceFromNotes(notes) {
   const match = /\(([\d.]+)% confidence\)/.exec(notes || "");
   return match ? Number(match[1]) : null;
@@ -51,25 +47,30 @@ function parseConfidenceFromNotes(notes) {
 
 export default function CropScannerPage() {
   const fileInputRef = useRef(null);
+  const imageRef = useRef(null);
 
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [imageElement, setImageElement] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const [disease, setDisease] = useState(null);
   const [confidence, setConfidence] = useState(null);
+  const [severity, setSeverity] = useState("Moderate");
 
   const [explanation, setExplanation] = useState("");
-  const [selectedCrop, setSelectedCrop] = useState("");
 
+  const [selectedCrop, setSelectedCrop] = useState("");
   const [farmId, setFarmId] = useState(null);
 
+  const [recentScans, setRecentScans] = useState([]);
+
+  const [modelReady, setModelReady] = useState(false);
   const [modelLoading, setModelLoading] = useState(true);
+
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [message, setMessage] = useState("");
-
-  const [recentScans, setRecentScans] = useState([]);
+  const [error, setError] = useState("");
 
   /*
    * ---------------------------------------------------------
@@ -78,28 +79,48 @@ export default function CropScannerPage() {
    */
 
   useEffect(() => {
-    async function initializeModel() {
+    let cancelled = false;
+
+    async function initializeDiseaseModel() {
       try {
         setModelLoading(true);
+        setError("");
+
         await loadDiseaseModel();
-      } catch (error) {
-        console.error("Disease model failed to load:", error);
+
+        if (!cancelled) {
+          setModelReady(true);
+        }
+      } catch (err) {
+        console.error(
+          "Disease model loading failed:",
+          err
+        );
+
+        if (!cancelled) {
+          setError(
+            err?.message ||
+              "Unable to load the disease detection model."
+          );
+        }
       } finally {
-        setModelLoading(false);
+        if (!cancelled) {
+          setModelLoading(false);
+        }
       }
     }
 
-    initializeModel();
+    initializeDiseaseModel();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /*
    * ---------------------------------------------------------
    * LOAD FARM + CROP + RECENT SCANS
    * ---------------------------------------------------------
-   * NOTE: the farms/crops lookup below still points at tables that
-   * aren't in any migration file. Left untouched here since that's a
-   * separate schema question (worth raising with your team — see the
-   * chat), but flagging so it isn't mistaken for "fixed."
    */
 
   useEffect(() => {
@@ -110,51 +131,81 @@ export default function CropScannerPage() {
           error: userError,
         } = await supabase.auth.getUser();
 
-        if (userError) throw userError;
+        if (userError) {
+          throw userError;
+        }
 
-        if (!user) return;
+        if (!user) {
+          return;
+        }
 
-        const { data: farm, error: farmError } = await supabase
+        const {
+          data: farm,
+          error: farmError,
+        } = await supabase
           .from("farms")
           .select("id")
           .eq("user_id", user.id)
           .limit(1)
           .maybeSingle();
 
-        if (farmError) throw farmError;
+        if (farmError) {
+          throw farmError;
+        }
 
         if (farm) {
           setFarmId(farm.id);
 
-          const { data: cropData, error: cropError } = await supabase
+          const {
+            data: cropData,
+            error: cropError,
+          } = await supabase
             .from("crops")
             .select("name")
             .eq("farm_id", farm.id)
             .limit(1)
             .maybeSingle();
 
-          if (cropError) throw cropError;
+          if (cropError) {
+            throw cropError;
+          }
 
           if (cropData) {
             setSelectedCrop(cropData.name);
           }
         }
 
-        // FIX: was querying `disease_predictions` (undocumented table).
-        // Now reads from `disease_reports`, the table that's actually
-        // migrated (supabase/migrations/20260831181330_offline_sync_support.sql).
-        const { data: scans, error: scansError } = await supabase
+        /*
+         * Load actual saved disease scans.
+         *
+         * This intentionally uses disease_reports rather than
+         * the old disease_predictions table.
+         */
+
+        const {
+          data: scans,
+          error: scansError,
+        } = await supabase
           .from("disease_reports")
-          .select("id, crop_name, notes, created_at")
+          .select(
+            "id, crop_name, notes, created_at"
+          )
           .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
+          .order("created_at", {
+            ascending: false,
+          })
           .limit(5);
 
-        if (scansError) throw scansError;
+        if (scansError) {
+          throw scansError;
+        }
 
         setRecentScans(scans || []);
-      } catch (error) {
-        console.error("Failed to load scanner data:", error);
+      } catch (err) {
+        console.error(
+          "Failed to load scanner data:",
+          err
+        );
       }
     }
 
@@ -170,21 +221,56 @@ export default function CropScannerPage() {
   function handleFileChange(e) {
     const file = e.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     if (file.size > 10 * 1024 * 1024) {
-      setMessage("Please choose an image smaller than 10MB.");
+      setError(
+        "The image is larger than 10MB. Please choose a smaller image."
+      );
       return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setError(
+        "Please choose a JPG, PNG, or WEBP image."
+      );
+      return;
+    }
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
     }
 
     const url = URL.createObjectURL(file);
 
+    setSelectedFile(file);
     setPreviewUrl(url);
+
     setDisease(null);
     setConfidence(null);
+    setSeverity("Moderate");
+
     setExplanation("");
+
+    setError("");
     setMessage("");
   }
+
+  /*
+   * ---------------------------------------------------------
+   * CLEAN PREVIEW URL
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   /*
    * ---------------------------------------------------------
@@ -193,65 +279,122 @@ export default function CropScannerPage() {
    */
 
   async function analyzeImage() {
-    if (!previewUrl) return;
+    if (!selectedFile) {
+      setError("Please upload a leaf photo first.");
+      return;
+    }
+
+    if (!modelReady) {
+      setError(
+        "Disease detection model is still loading. Please wait."
+      );
+      return;
+    }
+
+    if (!imageRef.current) {
+      setError(
+        "The uploaded image is not ready yet. Please try again."
+      );
+      return;
+    }
+
+    setAnalyzing(true);
+    setError("");
+    setMessage("");
+    setDisease(null);
+    setConfidence(null);
+    setExplanation("");
 
     try {
-      setAnalyzing(true);
-      setMessage("");
+      const detection = await detectDisease(
+        imageRef.current
+      );
 
-      const image = new Image();
+      if (!detection) {
+        throw new Error(
+          "The disease model returned no result."
+        );
+      }
 
-      image.onload = async () => {
-        try {
-          setImageElement(image);
+      /*
+       * Support multiple possible response shapes
+       * from the disease detection service.
+       */
 
-          const result = await detectDisease(image);
+      const diseaseName =
+        detection.diseaseName ||
+        detection.disease ||
+        detection.label ||
+        detection.name ||
+        "Unknown";
 
-          setDisease(result.diseaseName);
-          setConfidence(result.confidence);
+      const detectedConfidence = Number(
+        detection.confidence
+      );
 
-          if (result.diseaseName === "Unknown") {
-            setExplanation(
-              "Unable to confidently identify this disease. Please upload a clearer leaf photo."
-            );
-            return;
-          }
+      const detectedSeverity =
+        detection.severity || "Moderate";
 
-          /*
-           * Gemini is only used for explanation.
-           * Disease classification itself already happened locally.
-           */
+      setDisease(diseaseName);
 
-          try {
-            const text = await getDiseaseExplanation(
-              result.diseaseName,
-              selectedCrop
-            );
+      if (Number.isFinite(detectedConfidence)) {
+        setConfidence(detectedConfidence);
+      } else {
+        setConfidence(null);
+      }
 
-            setExplanation(text);
-          } catch (error) {
-            console.error("Gemini explanation failed:", error);
+      setSeverity(detectedSeverity);
 
-            setExplanation(
-              "AI explanation unavailable offline. Connect to the internet to get treatment and prevention guidance."
-            );
-          }
-        } catch (error) {
-          console.error("Disease detection failed:", error);
-          setMessage("Unable to analyze this image.");
-        } finally {
-          setAnalyzing(false);
-        }
-      };
+      /*
+       * Unknown result should not be sent to Gemini.
+       */
 
-      image.onerror = () => {
-        setAnalyzing(false);
-        setMessage("Unable to load the selected image.");
-      };
+      if (
+        diseaseName === "Unknown" ||
+        diseaseName === "Unknown disease"
+      ) {
+        setExplanation(
+          "Unable to confidently identify this disease. Please upload a clearer leaf photo."
+        );
 
-      image.src = previewUrl;
-    } catch (error) {
-      console.error(error);
+        return;
+      }
+
+      /*
+       * Disease classification happens locally.
+       *
+       * Gemini is only used to generate the explanation,
+       * treatment and prevention guidance.
+       */
+
+      try {
+        const text = await getDiseaseExplanation(
+          diseaseName,
+          selectedCrop || "Unknown"
+        );
+
+        setExplanation(text);
+      } catch (geminiError) {
+        console.error(
+          "Gemini explanation failed:",
+          geminiError
+        );
+
+        setExplanation(
+          "AI explanation unavailable offline. Connect to the internet to get treatment and prevention guidance."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "Disease analysis failed:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Unable to analyse this leaf image."
+      );
+    } finally {
       setAnalyzing(false);
     }
   }
@@ -260,15 +403,16 @@ export default function CropScannerPage() {
    * ---------------------------------------------------------
    * SAVE DISEASE RESULT
    * ---------------------------------------------------------
-   * FIX: previously a direct supabase.from("disease_predictions").insert(...)
-   * call — meant zero offline support (would just fail with no network)
-   * and wrote into a table with no migration behind it.
    *
-   * Now: goes through queueTableWrite(), which writes to IndexedDB
-   * first (instant, works with zero connectivity) and lets syncManager
-   * push it to Supabase's `disease_reports` table whenever connectivity
-   * is available. The UI updates optimistically using the same data,
-   * since we won't get a server response back immediately when offline.
+   * IMPORTANT:
+   * This uses queueTableWrite instead of directly inserting
+   * into Supabase.
+   *
+   * Therefore:
+   *   Online  -> queued and synced to Supabase
+   *   Offline -> saved locally and synced later
+   *
+   * The table used is disease_reports.
    * ---------------------------------------------------------
    */
 
@@ -276,9 +420,12 @@ export default function CropScannerPage() {
     try {
       setSaving(true);
       setMessage("");
+      setError("");
 
       if (!disease || disease === "Unknown") {
-        setMessage("There is no confident disease result to save.");
+        setMessage(
+          "There is no confident disease result to save."
+        );
         return;
       }
 
@@ -287,36 +434,51 @@ export default function CropScannerPage() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) throw userError;
+      if (userError) {
+        throw userError;
+      }
 
       if (!user) {
         setMessage("Please log in first.");
         return;
       }
 
-      const notes = `Detected: ${disease} (${confidence}% confidence)`;
-      const cropName = selectedCrop || disease;
+      const confidenceValue =
+        Number.isFinite(Number(confidence))
+          ? Number(confidence)
+          : 0;
+
+      const notes = `Detected: ${disease} (${confidenceValue}% confidence)`;
+
+      const cropName =
+        selectedCrop || "Unknown Crop";
 
       const recordId = await queueTableWrite({
         table: "disease_reports",
         operation: "insert",
         payload: {
           user_id: user.id,
+          farm_id: farmId || null,
           crop_name: cropName,
           notes,
         },
       });
 
-      // Optimistic UI update — queueTableWrite doesn't return the saved
-      // server row (there may not be one yet if we're offline), so we
-      // build the same shape locally using the id it generated.
+      /*
+       * Optimistically update Recent Scans.
+       *
+       * queueTableWrite may save locally first when offline,
+       * so we create the local representation immediately.
+       */
+
       setRecentScans((prev) =>
         [
           {
             id: recordId,
             crop_name: cropName,
             notes,
-            created_at: new Date().toISOString(),
+            created_at:
+              new Date().toISOString(),
           },
           ...prev,
         ].slice(0, 5)
@@ -327,13 +489,64 @@ export default function CropScannerPage() {
           ? "Disease scan saved — syncing now."
           : "Saved offline — will sync automatically once you're back online."
       );
-    } catch (error) {
-      console.error("Failed to save disease report:", error);
-      setMessage("Unable to save disease scan.");
+    } catch (err) {
+      console.error(
+        "Failed to save disease report:",
+        err
+      );
+
+      setError(
+        "Unable to save disease scan."
+      );
     } finally {
       setSaving(false);
     }
   }
+
+  /*
+   * ---------------------------------------------------------
+   * CONFIDENCE DISPLAY
+   * ---------------------------------------------------------
+   */
+
+  const confidenceText =
+    Number.isFinite(Number(confidence))
+      ? `${Number(confidence).toFixed(1)}%`
+      : "--";
+
+  /*
+   * ---------------------------------------------------------
+   * READ EXPLANATION ALOUD
+   * ---------------------------------------------------------
+   */
+
+  function readExplanationAloud() {
+    if (
+      !explanation ||
+      !("speechSynthesis" in window)
+    ) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const speech =
+      new SpeechSynthesisUtterance(
+        explanation
+      );
+
+    speech.lang = "hi-IN";
+
+    window.speechSynthesis.speak(
+      speech
+    );
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * UI
+   * ---------------------------------------------------------
+   */
 
   return (
     <Layout title="Crop Scanner">
@@ -344,7 +557,10 @@ export default function CropScannerPage() {
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
 
         {/* LEFT COLUMN */}
+
         <div className="space-y-5">
+
+          {/* UPLOAD */}
 
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-[#e8c9a0] bg-[#fbeee0] p-10 text-center">
 
@@ -369,21 +585,44 @@ export default function CropScannerPage() {
             />
 
             <button
-              onClick={() => fileInputRef.current?.click()}
+              type="button"
+              onClick={() =>
+                fileInputRef.current?.click()
+              }
               className="mt-1 flex items-center gap-2 rounded-full bg-[#f0a664] px-5 py-2.5 text-sm font-semibold text-[#4a2e10] shadow-sm hover:bg-[#e5924a]"
             >
               <Upload size={16} />
               Choose Photo
             </button>
+
           </div>
 
+          {/* ERROR */}
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-xl bg-red-50 p-4 text-sm text-red-700">
+
+              <AlertCircle
+                size={18}
+                className="mt-0.5 shrink-0"
+              />
+
+              <span>{error}</span>
+
+            </div>
+          )}
+
+          {/* TIPS */}
+
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
             <p className="flex items-center gap-2 font-bold text-[#24352a]">
               <Eye size={16} />
               Tips for Best Results
             </p>
 
             <ul className="mt-3 space-y-2.5">
+
               {TIPS.map((tip) => (
                 <li
                   key={tip}
@@ -393,50 +632,73 @@ export default function CropScannerPage() {
                     size={16}
                     className="shrink-0 text-green-600"
                   />
+
                   {tip}
                 </li>
               ))}
+
             </ul>
+
           </div>
+
         </div>
 
         {/* RIGHT COLUMN */}
+
         <div className="space-y-5">
 
-          <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-[#e5dfd2]">
+          {/* IMAGE / ANALYSIS */}
+
+          <div className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-[#e5dfd2]">
 
             {previewUrl ? (
               <>
                 <img
+                  ref={imageRef}
                   src={previewUrl}
                   alt="Uploaded leaf"
-                  className="max-h-56 w-full rounded-xl object-cover"
+                  className="max-h-56 w-full rounded-xl object-contain"
                 />
 
                 <button
                   type="button"
                   onClick={analyzeImage}
-                  disabled={modelLoading || analyzing}
-                  className="flex items-center gap-2 rounded-full bg-[#2f7357] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#245d46] disabled:opacity-60"
+                  disabled={
+                    !modelReady ||
+                    modelLoading ||
+                    analyzing
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1f5b3d] px-5 py-3 text-sm font-bold text-white hover:bg-[#173b27] disabled:cursor-not-allowed disabled:opacity-60"
                 >
+
                   {analyzing ? (
                     <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Analyzing...
+                      <Loader2
+                        size={17}
+                        className="animate-spin"
+                      />
+
+                      Analyzing Leaf...
+                    </>
+                  ) : modelLoading ? (
+                    <>
+                      <Loader2
+                        size={17}
+                        className="animate-spin"
+                      />
+
+                      Loading AI Model...
                     </>
                   ) : (
                     <>
-                      <Leaf size={16} />
+                      <ScanSearch size={17} />
+
                       Analyze Leaf
                     </>
                   )}
+
                 </button>
 
-                {modelLoading && (
-                  <p className="text-xs text-slate-500">
-                    Loading disease model...
-                  </p>
-                )}
               </>
             ) : (
               <>
@@ -454,85 +716,125 @@ export default function CropScannerPage() {
               </>
             )}
 
-            {disease && (
-              <div className="mt-3 w-full rounded-2xl bg-[#f4f1e7] p-4 text-left">
-
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Detection Result
-                </p>
-
-                <p className="mt-1 text-lg font-bold text-[#24352a]">
-                  {disease}
-                </p>
-
-                {confidence !== null && (
-                  <p className="mt-1 text-sm text-slate-500">
-                    Confidence: {confidence}%
-                  </p>
-                )}
-
-                {disease !== "Unknown" && (
-                  <button
-                    type="button"
-                    onClick={savePrediction}
-                    disabled={saving}
-                    className="mt-3 flex items-center gap-2 rounded-full bg-[#2f7357] px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
-                  >
-                    {saving ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <Save size={14} />
-                    )}
-                    Save Scan
-                  </button>
-                )}
-              </div>
-            )}
-
-            {explanation && (
-              <div className="mt-2 w-full rounded-2xl bg-white p-4 text-left ring-1 ring-[#e5dfd2]">
-                <div className="flex items-center gap-2">
-                  <Leaf size={16} className="text-[#2f7357]" />
-
-                  <p className="font-bold text-[#24352a]">
-                    AI Explanation
-                  </p>
-                </div>
-
-                <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[#3d4d40]">
-                  {explanation}
-                </p>
-
-                <button
-                  type="button"
-                  className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#2f7357]"
-                  onClick={() => {
-                    if ("speechSynthesis" in window) {
-                      window.speechSynthesis.cancel();
-
-                      const speech = new SpeechSynthesisUtterance(
-                        explanation
-                      );
-
-                      speech.lang = "hi-IN";
-                      window.speechSynthesis.speak(speech);
-                    }
-                  }}
-                >
-                  <Volume2 size={14} />
-                  Read explanation aloud
-                </button>
-              </div>
-            )}
-
-            {message && (
-              <p className="text-xs font-medium text-[#2f7357]">
-                {message}
+            {modelLoading && (
+              <p className="text-xs text-slate-500">
+                Loading disease detection model...
               </p>
             )}
+
           </div>
 
+          {/* RESULT */}
+
+          {disease && (
+            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
+
+              <div className="flex items-start justify-between gap-3">
+
+                <div>
+
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#2f7357]">
+                    AI Diagnosis
+                  </p>
+
+                  <h3 className="mt-1 font-serif text-xl font-bold text-[#24352a]">
+                    {disease}
+                  </h3>
+
+                </div>
+
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    SEVERITY_THEME[severity] ||
+                    SEVERITY_THEME.Moderate
+                  }`}
+                >
+                  {severity}
+                </span>
+
+              </div>
+
+              <div className="mt-4 rounded-xl bg-[#f4f8ef] p-4">
+
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Confidence
+                </p>
+
+                <p className="mt-1 text-2xl font-bold text-[#2f7357]">
+                  {confidenceText}
+                </p>
+
+              </div>
+
+              {disease !== "Unknown" && (
+                <button
+                  type="button"
+                  onClick={savePrediction}
+                  disabled={saving}
+                  className="mt-4 flex items-center gap-2 rounded-full bg-[#2f7357] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#245d46] disabled:opacity-60"
+                >
+
+                  {saving ? (
+                    <Loader2
+                      size={14}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Save size={14} />
+                  )}
+
+                  {saving
+                    ? "Saving..."
+                    : "Save Scan"}
+
+                </button>
+              )}
+
+              {explanation && (
+                <div className="mt-4">
+
+                  <div className="flex items-center gap-2">
+
+                    <Leaf
+                      size={16}
+                      className="text-[#2f7357]"
+                    />
+
+                    <p className="font-bold text-[#24352a]">
+                      AI Explanation
+                    </p>
+
+                  </div>
+
+                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[#3d4d40]">
+                    {explanation}
+                  </p>
+
+                  <button
+                    type="button"
+                    className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#2f7357]"
+                    onClick={readExplanationAloud}
+                  >
+                    <Volume2 size={14} />
+                    Read explanation aloud
+                  </button>
+
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* MESSAGE */}
+
+          {message && (
+            <p className="text-xs font-medium text-[#2f7357]">
+              {message}
+            </p>
+          )}
+
           {/* RECENT SCANS */}
+
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
             <p className="font-bold text-[#24352a]">
@@ -547,13 +849,18 @@ export default function CropScannerPage() {
                 </p>
               ) : (
                 recentScans.map((scan) => {
-                  const scanConfidence = parseConfidenceFromNotes(scan.notes);
+
+                  const scanConfidence =
+                    parseConfidenceFromNotes(
+                      scan.notes
+                    );
 
                   return (
                     <div
                       key={scan.id}
                       className="flex items-center justify-between rounded-xl px-2 py-2.5 hover:bg-[#f7f5ee]"
                     >
+
                       <div className="flex items-center gap-3">
 
                         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f4f1e7] text-[#1f5b3d]">
@@ -561,14 +868,19 @@ export default function CropScannerPage() {
                         </div>
 
                         <div>
+
                           <p className="text-sm font-semibold text-[#24352a]">
                             {scan.crop_name || "Crop"}
                           </p>
 
                           <p className="text-xs text-slate-500">
-                            {new Date(scan.created_at).toLocaleDateString()}
+                            {new Date(
+                              scan.created_at
+                            ).toLocaleDateString()}
                           </p>
+
                         </div>
+
                       </div>
 
                       {scanConfidence !== null && (
@@ -584,14 +896,20 @@ export default function CropScannerPage() {
                           {scanConfidence}%
                         </span>
                       )}
+
                     </div>
                   );
                 })
               )}
+
             </div>
+
           </div>
+
         </div>
+
       </div>
     </Layout>
   );
 }
+
