@@ -27,12 +27,8 @@ import {
 } from "./services/voiceAssistant.js";
 
 import {
-  getCurrentLocation,
-} from "./services/location.js";
-
-import {
-  getLocationName,
-} from "./services/locationName.js";
+  getCoordinatesFromLocation,
+} from "./services/geocodingApi.js";
 
 import {
   getWeather,
@@ -41,6 +37,10 @@ import {
 import {
   getMandiPrices,
 } from "./services/mandiApi.js";
+
+import { supabase } from "./lib/supabase";
+
+import { useAuth } from "./context/AuthContext";
 
 // =============================================================
 // QUICK QUESTIONS
@@ -101,7 +101,7 @@ const LANGUAGE_PROMPT_CODES = {
   தமிழ்: "ta",
   తెలుగు: "te",
   ಕನ್ನಡ: "kn",
-  ਪੰਜਾਬੀ: "pa",
+  ਪੰਜਾਬી: "pa",
   বাংলা: "bn",
   ଓଡ଼ିଆ: "or",
   ગુજરાતી: "gu",
@@ -115,8 +115,7 @@ const LANGUAGE_PROMPT_CODES = {
 
 function detectCommodity(question) {
   const text =
-    String(question || "")
-      .toLowerCase();
+    String(question || "").toLowerCase();
 
   const commodities = [
     {
@@ -227,8 +226,7 @@ function detectCommodity(question) {
 
 function needsMandiData(question) {
   const text =
-    String(question || "")
-      .toLowerCase();
+    String(question || "").toLowerCase();
 
   const mandiKeywords = [
     "mandi",
@@ -289,7 +287,7 @@ async function fetchRelevantMandiData(
 
   try {
     // ---------------------------------------------------------
-    // First: try district + state + commodity
+    // First: district + state + commodity
     // ---------------------------------------------------------
 
     let data =
@@ -308,7 +306,7 @@ async function fetchRelevantMandiData(
     }
 
     // ---------------------------------------------------------
-    // Second: try state + commodity
+    // Second: state + commodity
     // ---------------------------------------------------------
 
     data =
@@ -326,7 +324,7 @@ async function fetchRelevantMandiData(
     }
 
     // ---------------------------------------------------------
-    // Third: try commodity only
+    // Third: commodity only
     // ---------------------------------------------------------
 
     data =
@@ -353,6 +351,8 @@ async function fetchRelevantMandiData(
 export default function AiCopilotPage() {
   const routerLocation =
     useLocation();
+
+  const { user } = useAuth();
 
   // -----------------------------------------------------------
   // STATE
@@ -391,30 +391,88 @@ export default function AiCopilotPage() {
     useState(true);
 
   // -----------------------------------------------------------
-  // LOAD LOCATION + WEATHER
+  // LOAD ONBOARDING LOCATION + WEATHER
   // -----------------------------------------------------------
 
   async function loadFarmerContext() {
     try {
       setContextLoading(true);
 
+      // -------------------------------------------------------
+      // User must be logged in
+      // -------------------------------------------------------
+
+      if (!user) {
+        throw new Error(
+          "You must be logged in."
+        );
+      }
+
+      // -------------------------------------------------------
+      // Get onboarding state + district from Supabase
+      // -------------------------------------------------------
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("state, district")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      const state =
+        profile?.state?.trim();
+
+      const district =
+        profile?.district?.trim();
+
+      if (!state || !district) {
+        throw new Error(
+          "Your state and district are not available. Please update your farm location."
+        );
+      }
+
+      console.log(
+        "Farmer onboarding location:",
+        {
+          state,
+          district,
+        }
+      );
+
+      // -------------------------------------------------------
+      // Convert onboarding location into coordinates
+      // -------------------------------------------------------
+
       const coordinates =
-        await getCurrentLocation();
+        await getCoordinatesFromLocation(
+          state,
+          district
+        );
 
-      const [
-        weather,
-        locationName,
-      ] = await Promise.all([
-        getWeather(
+      console.log(
+        "Geocoded farmer location:",
+        coordinates
+      );
+
+      // -------------------------------------------------------
+      // Get weather for onboarding location
+      // -------------------------------------------------------
+
+      const weather =
+        await getWeather(
           coordinates.latitude,
           coordinates.longitude
-        ),
+        );
 
-        getLocationName(
-          coordinates.latitude,
-          coordinates.longitude
-        ),
-      ]);
+      // -------------------------------------------------------
+      // Build farmer context
+      // -------------------------------------------------------
 
       const context = {
         location: {
@@ -424,10 +482,8 @@ export default function AiCopilotPage() {
           longitude:
             coordinates.longitude,
 
-          accuracy:
-            coordinates.accuracy,
-
-          ...locationName,
+          state,
+          district,
         },
 
         weather,
@@ -464,8 +520,10 @@ export default function AiCopilotPage() {
   // -----------------------------------------------------------
 
   useEffect(() => {
-    loadFarmerContext();
-  }, []);
+    if (user) {
+      loadFarmerContext();
+    }
+  }, [user]);
 
   // -----------------------------------------------------------
   // SEND MESSAGE
@@ -497,7 +555,7 @@ export default function AiCopilotPage() {
 
     try {
       // -------------------------------------------------------
-      // Ensure location/weather are available
+      // Ensure onboarding location/weather are available
       // -------------------------------------------------------
 
       let context =
@@ -509,6 +567,16 @@ export default function AiCopilotPage() {
       ) {
         context =
           await loadFarmerContext();
+      }
+
+      // -------------------------------------------------------
+      // If onboarding location could not be loaded
+      // -------------------------------------------------------
+
+      if (!context?.location) {
+        throw new Error(
+          "Your onboarding location could not be loaded. Please check your state and district in your profile."
+        );
       }
 
       // -------------------------------------------------------
@@ -730,14 +798,18 @@ export default function AiCopilotPage() {
           <div className="mt-3 text-xs text-slate-400">
 
             {contextLoading
-              ? "Loading your location and live weather..."
+              ? "Loading your onboarding location and live weather..."
               : farmerContext?.location
                 ? `Using live data for ${
-                    farmerContext.location.city ||
+                    farmerContext.location.district ||
                     farmerContext.location.state ||
                     "your location"
+                  }${
+                    farmerContext.location.state
+                      ? `, ${farmerContext.location.state}`
+                      : ""
                   }`
-                : "Live location unavailable"}
+                : "Onboarding location unavailable"}
 
           </div>
 
