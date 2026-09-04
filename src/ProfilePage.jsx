@@ -1,23 +1,25 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Bell,
   MapPin,
   Leaf,
   Globe,
   Phone,
-  UserRound,
-  Check,
 } from "lucide-react";
 
 import Layout from "./Layout.jsx";
+import { useLanguage } from "./context/LanguageContext";
+import { translateTexts } from "./services/translation";
+
+import { useAuth } from "./context/AuthContext";
 
 const LANGUAGES = [
-  { native: "हिंदी", name: "Hindi" },
-  { native: "मराठी", name: "Marathi" },
-  { native: "தமிழ்", name: "Tamil" },
-  { native: "తెలుగు", name: "Telugu" },
-  { native: "English", name: "English" },
-  { native: "ਪੰਜਾਬੀ", name: "Punjabi" },
+  { code: "hi", native: "हिंदी", name: "Hindi" },
+  { code: "mr", native: "मराठी", name: "Marathi" },
+  { code: "ta", native: "தமிழ்", name: "Tamil" },
+  { code: "te", native: "తెలుగు", name: "Telugu" },
+  { code: "en", native: "English", name: "English" },
+  { code: "pa", native: "ਪੰਜਾਬੀ", name: "Punjabi" },
 ];
 
 const INITIAL_ALERTS = [
@@ -48,9 +50,128 @@ const INITIAL_ALERTS = [
   },
 ];
 
+const ENGLISH_TEXTS = {
+  profile: "Profile",
+  farmerProfile: "Farmer Profile",
+  farmer: "Farmer",
+  maharashtra: "Maharashtra",
+
+  farmSize: "Farm Size",
+  experience: "Experience",
+  active: "Active",
+
+  farmLocation: "Farm Location",
+  currentCrops: "Current Crops",
+  preferredLanguage: "Preferred Language",
+  phoneNumber: "Phone Number",
+
+  notificationPreferences: "Notification Preferences",
+
+  weatherAlerts: "Weather Alerts",
+  weatherDescription: "Rain, heatwave, frost warnings",
+
+  pestDiseaseAlerts: "Pest & Disease Alerts",
+  pestDiseaseDescription: "Outbreak risk notifications",
+
+  marketPriceUpdates: "Market Price Updates",
+  marketPriceDescription: "Daily mandi price summary",
+
+  aiFarmingTips: "AI Farming Tips",
+  aiFarmingTipsDescription: "Daily crop care advice",
+
+  yieldRiskAlerts: "Yield Risk Alerts",
+  yieldRiskDescription: "Low soil moisture, high temp",
+
+  languageSettings: "Language Settings",
+
+  helpline: "Helpline",
+  kisanHelpline: "Kisan Helpline",
+  freeAvailable: "Free · Available 24/7",
+
+  acres: "Acres",
+  years: "Yrs",
+  crops: "Crops",
+  districtUnavailable: "District unavailable",
+  stateUnavailable: "State unavailable",
+  noCropsAdded: "No crops added",
+  notProvided: "Not provided",
+  crop: "Crop",
+};
+
 export default function ProfilePage() {
+  const { language, setLanguage } = useLanguage();
+  const { farmerData } = useAuth();
+
   const [alerts, setAlerts] = useState(INITIAL_ALERTS);
-  const [selectedLanguage, setSelectedLanguage] = useState("Hindi");
+  const [translations, setTranslations] = useState(ENGLISH_TEXTS);
+  const [isTranslating, setIsTranslating] = useState(false);
+
+  const profile = farmerData?.profile;
+  const farm = farmerData?.farm;
+  const crops = farmerData?.crops || [];
+
+  /*
+   * Convert the global language code into the language object
+   * used by the language selector.
+   */
+  const selectedLanguage =
+    LANGUAGES.find((item) => item.code === language) || LANGUAGES[4];
+
+  /*
+   * Translate Profile page whenever the global language changes.
+   * The translation API is used here only; translation.js is unchanged.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTranslations() {
+      if (!language || language === "en") {
+        setTranslations(ENGLISH_TEXTS);
+        setIsTranslating(false);
+        return;
+      }
+
+      setIsTranslating(true);
+
+      try {
+        const keys = Object.keys(ENGLISH_TEXTS);
+        const englishTexts = Object.values(ENGLISH_TEXTS);
+
+        const translated = await translateTexts(
+          englishTexts,
+          language,
+          "en"
+        );
+
+        if (cancelled) return;
+
+        const translatedObject = {};
+
+        keys.forEach((key, index) => {
+          translatedObject[key] =
+            translated[index] || ENGLISH_TEXTS[key];
+        });
+
+        setTranslations(translatedObject);
+      } catch (error) {
+        console.error("Profile translation error:", error);
+
+        if (!cancelled) {
+          setTranslations(ENGLISH_TEXTS);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsTranslating(false);
+        }
+      }
+    }
+
+    loadTranslations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
 
   function toggleAlert(index) {
     setAlerts((current) =>
@@ -62,13 +183,60 @@ export default function ProfilePage() {
     );
   }
 
+  /*
+   * Global language change.
+   * This changes the language for the whole application.
+   */
+  function handleLanguageChange(languageCode) {
+    setLanguage(languageCode);
+  }
+
+  const translatedAlerts = [
+    {
+      title: translations.weatherAlerts,
+      description: translations.weatherDescription,
+    },
+    {
+      title: translations.pestDiseaseAlerts,
+      description: translations.pestDiseaseDescription,
+    },
+    {
+      title: translations.marketPriceUpdates,
+      description: translations.marketPriceDescription,
+    },
+    {
+      title: translations.aiFarmingTips,
+      description: translations.aiFarmingTipsDescription,
+    },
+    {
+      title: translations.yieldRiskAlerts,
+      description: translations.yieldRiskDescription,
+    },
+  ];
+
+  const farmArea =
+    farm?.area !== null && farm?.area !== undefined
+      ? `${farm.area} ${farm?.area_unit || translations.acres}`
+      : "--";
+
+  const cropCountLabel =
+    crops.length === 1
+      ? `1 ${translations.crop}`
+      : `${crops.length} ${translations.crops}`;
+
+  const experienceValue =
+    profile?.experience_years !== null &&
+    profile?.experience_years !== undefined
+      ? `${profile.experience_years} ${translations.years}`
+      : "--";
+
   return (
-    <Layout title="Profile">
+    <Layout title={translations.profile}>
       <div className="space-y-5">
         {/* Page Heading */}
         <div>
           <h2 className="font-serif text-2xl font-bold text-[#24352a]">
-            Farmer Profile
+            {translations.farmerProfile}
           </h2>
         </div>
 
@@ -86,11 +254,12 @@ export default function ProfilePage() {
               </div>
 
               <h3 className="mt-4 font-serif text-2xl font-bold">
-                Ramesh Patil
+                {profile?.name || translations.farmer}
               </h3>
 
               <p className="mt-1 text-sm text-white/70">
-                Farmer · Maharashtra
+                {translations.farmer} ·{" "}
+                {profile?.state || translations.maharashtra}
               </p>
 
               <div className="my-5 h-px w-full bg-white/20" />
@@ -98,18 +267,24 @@ export default function ProfilePage() {
               {/* Stats */}
               <div className="grid w-full grid-cols-3 gap-3">
                 <div>
-                  <p className="text-lg font-bold">4.2 Acres</p>
-                  <p className="text-xs text-white/60">Farm Size</p>
+                  <p className="text-lg font-bold">{farmArea}</p>
+                  <p className="text-xs text-white/60">
+                    {translations.farmSize}
+                  </p>
                 </div>
 
                 <div>
-                  <p className="text-lg font-bold">12 Yrs</p>
-                  <p className="text-xs text-white/60">Experience</p>
+                  <p className="text-lg font-bold">{experienceValue}</p>
+                  <p className="text-xs text-white/60">
+                    {translations.experience}
+                  </p>
                 </div>
 
                 <div>
-                  <p className="text-lg font-bold">2 Crops</p>
-                  <p className="text-xs text-white/60">Active</p>
+                  <p className="text-lg font-bold">{cropCountLabel}</p>
+                  <p className="text-xs text-white/60">
+                    {translations.active}
+                  </p>
                 </div>
               </div>
             </div>
@@ -124,11 +299,12 @@ export default function ProfilePage() {
 
               <div>
                 <p className="text-sm font-semibold text-[#70756e]">
-                  Farm Location
+                  {translations.farmLocation}
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  Nashik, Maharashtra 422001
+                  {profile?.district || translations.districtUnavailable},{" "}
+                  {profile?.state || translations.stateUnavailable}
                 </p>
               </div>
             </div>
@@ -143,11 +319,24 @@ export default function ProfilePage() {
 
               <div>
                 <p className="text-sm font-semibold text-[#70756e]">
-                  Current Crops
+                  {translations.currentCrops}
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  Cotton (2.5 ac) · Wheat (1.7 ac)
+                  {crops.length > 0
+                    ? crops
+                        .map(
+                          (crop) =>
+                            `${crop.crop_name}${
+                              crop.acreage
+                                ? ` (${crop.acreage} ${
+                                    farm?.area_unit || "acre"
+                                  })`
+                                : ""
+                            }`
+                        )
+                        .join(" · ")
+                    : translations.noCropsAdded}
                 </p>
               </div>
             </div>
@@ -162,11 +351,11 @@ export default function ProfilePage() {
 
               <div>
                 <p className="text-sm font-semibold text-[#70756e]">
-                  Preferred Language
+                  {translations.preferredLanguage}
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  {selectedLanguage}
+                  {selectedLanguage.name}
                 </p>
               </div>
             </div>
@@ -181,11 +370,11 @@ export default function ProfilePage() {
 
               <div>
                 <p className="text-sm font-semibold text-[#70756e]">
-                  Phone Number
+                  {translations.phoneNumber}
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  +91 98765 43210
+                  {profile?.phone || translations.notProvided}
                 </p>
               </div>
             </div>
@@ -198,46 +387,50 @@ export default function ProfilePage() {
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2] lg:col-span-3">
             <h3 className="flex items-center gap-2 font-serif text-lg font-bold text-[#24352a]">
               <Bell size={18} className="text-[#2d7054]" />
-              Notification Preferences
+              {translations.notificationPreferences}
             </h3>
 
             <div className="mt-4">
-              {alerts.map((alert, index) => (
-                <div
-                  key={alert.title}
-                  className="flex items-center justify-between border-b border-[#e5dfd2] py-3.5 last:border-b-0"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-[#24352a]">
-                      {alert.title}
-                    </p>
+              {alerts.map((alert, index) => {
+                const translatedAlert = translatedAlerts[index];
 
-                    <p className="mt-0.5 text-sm text-[#777c76]">
-                      {alert.description}
-                    </p>
-                  </div>
-
-                  {/* Toggle */}
-                  <button
-                    type="button"
-                    onClick={() => toggleAlert(index)}
-                    aria-label={`Toggle ${alert.title}`}
-                    className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-                      alert.enabled
-                        ? "bg-[#2d7054]"
-                        : "bg-[#d1d3d2]"
-                    }`}
+                return (
+                  <div
+                    key={alert.title}
+                    className="flex items-center justify-between border-b border-[#e5dfd2] py-3.5 last:border-b-0"
                   >
-                    <span
-                      className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                    <div>
+                      <p className="text-sm font-semibold text-[#24352a]">
+                        {translatedAlert.title}
+                      </p>
+
+                      <p className="mt-0.5 text-sm text-[#777c76]">
+                        {translatedAlert.description}
+                      </p>
+                    </div>
+
+                    {/* Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => toggleAlert(index)}
+                      aria-label={`Toggle ${alert.title}`}
+                      className={`relative h-7 w-12 shrink-0 overflow-hidden rounded-full transition-colors ${
                         alert.enabled
-                          ? "translate-x-6"
-                          : "translate-x-1"
+                          ? "bg-[#2d7054]"
+                          : "bg-[#d1d3d2]"
                       }`}
-                    />
-                  </button>
-                </div>
-              ))}
+                    >
+                      <span
+                        className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                          alert.enabled
+                            ? "translate-x-5"
+                            : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -247,20 +440,20 @@ export default function ProfilePage() {
             <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
               <h3 className="flex items-center gap-2 font-serif text-lg font-bold text-[#24352a]">
                 <Globe size={18} className="text-[#2d7054]" />
-                Language Settings
+                {translations.languageSettings}
               </h3>
 
               <div className="mt-4 grid grid-cols-2 gap-2.5">
-                {LANGUAGES.map((language) => {
+                {LANGUAGES.map((languageOption) => {
                   const isSelected =
-                    selectedLanguage === language.name;
+                    language === languageOption.code;
 
                   return (
                     <button
-                      key={language.name}
+                      key={languageOption.code}
                       type="button"
                       onClick={() =>
-                        setSelectedLanguage(language.name)
+                        handleLanguageChange(languageOption.code)
                       }
                       className={`flex h-[70px] flex-col items-center justify-center rounded-2xl border-2 transition-all ${
                         isSelected
@@ -269,7 +462,7 @@ export default function ProfilePage() {
                       }`}
                     >
                       <span className="text-base font-bold">
-                        {language.native}
+                        {languageOption.native}
                       </span>
 
                       <span
@@ -279,18 +472,24 @@ export default function ProfilePage() {
                             : "text-[#777c76]"
                         }`}
                       >
-                        {language.name}
+                        {languageOption.name}
                       </span>
                     </button>
                   );
                 })}
               </div>
+
+              {isTranslating && (
+                <p className="mt-3 text-center text-xs text-[#777c76]">
+                  Translating...
+                </p>
+              )}
             </div>
 
             {/* Helpline */}
             <div className="rounded-2xl bg-[#d8f4dc] p-5">
               <p className="text-sm font-semibold text-[#2d7054]">
-                Helpline
+                {translations.helpline}
               </p>
 
               <div className="mt-4 flex items-center gap-3">
@@ -300,7 +499,7 @@ export default function ProfilePage() {
 
                 <div>
                   <p className="text-base font-bold text-[#24352a]">
-                    Kisan Helpline
+                    {translations.kisanHelpline}
                   </p>
 
                   <p className="text-lg font-bold text-[#2d7054]">
@@ -308,7 +507,7 @@ export default function ProfilePage() {
                   </p>
 
                   <p className="text-xs text-[#737b74]">
-                    Free · Available 24/7
+                    {translations.freeAvailable}
                   </p>
                 </div>
               </div>

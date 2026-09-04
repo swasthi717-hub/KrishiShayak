@@ -23,8 +23,10 @@ import {
 import { getDiseaseExplanation } from "./services/gemini.js";
 
 import { supabase } from "./lib/supabase";
-
 import { queueTableWrite } from "./sync/queueAction";
+
+import { useLanguage } from "./context/LanguageContext";
+import { translateTexts } from "./services/translation";
 
 const TIPS = [
   "Take photo in natural daylight",
@@ -40,6 +42,56 @@ const SEVERITY_THEME = {
   Severe: "bg-red-100 text-red-700",
 };
 
+const UI_TEXT = [
+  "Crop Scanner",
+  "AI Crop Health Scanner",
+  "Upload or Capture Leaf Photo",
+  "JPG, PNG, WEBP · Max 10MB",
+  "Choose Photo",
+  "Tips for Best Results",
+  ...TIPS,
+  "Analyze Leaf",
+  "Analyzing...",
+  "Loading disease model...",
+  "No photo uploaded yet",
+  "Upload a leaf photo to get instant disease analysis",
+  "Detection Result",
+  "Confidence:",
+  "Save Scan",
+  "AI Explanation",
+  "Read explanation aloud",
+  "Recent Scans",
+  "No saved scans yet.",
+  "Crop",
+  "Please choose an image smaller than 10MB.",
+  "Please choose a JPG, PNG, or WEBP image.",
+  "Unable to analyze this image.",
+  "Unable to load the selected image.",
+  "Unable to save disease scan.",
+  "There is no confident disease result to save.",
+  "Please log in first.",
+  "Disease scan saved — syncing now.",
+  "Saved offline — will sync automatically once you're back online.",
+  "Unable to confidently identify this disease. Please upload a clearer leaf photo.",
+  "AI explanation unavailable offline. Connect to the internet to get treatment and prevention guidance.",
+  "The disease was detected, but the detailed AI explanation is currently unavailable.",
+  "Disease detection model is still loading. Please wait.",
+];
+
+const SPEECH_LANGUAGES = {
+  en: "en-IN",
+  hi: "hi-IN",
+  mr: "mr-IN",
+  bn: "bn-IN",
+  ta: "ta-IN",
+  te: "te-IN",
+  kn: "kn-IN",
+  ml: "ml-IN",
+  gu: "gu-IN",
+  pa: "pa-IN",
+  or: "or-IN",
+};
+
 function parseConfidenceFromNotes(notes) {
   const match = /\(([\d.]+)% confidence\)/.exec(notes || "");
   return match ? Number(match[1]) : null;
@@ -48,6 +100,8 @@ function parseConfidenceFromNotes(notes) {
 export default function CropScannerPage() {
   const fileInputRef = useRef(null);
   const imageRef = useRef(null);
+
+  const { language } = useLanguage();
 
   const [previewUrl, setPreviewUrl] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -70,12 +124,79 @@ export default function CropScannerPage() {
   const [saving, setSaving] = useState(false);
 
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [modelError, setModelError] = useState("");
+
+  const [translations, setTranslations] = useState(() => {
+    const initial = {};
+
+    UI_TEXT.forEach((text) => {
+      initial[text] = text;
+    });
+
+    return initial;
+  });
+
+  const t = (text) => translations[text] || text;
 
   /*
-   * ---------------------------------------------------------
+   * =========================================================
+   * TRANSLATION
+   * =========================================================
+   */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function translatePage() {
+      if (!language || language === "en") {
+        const english = {};
+
+        UI_TEXT.forEach((text) => {
+          english[text] = text;
+        });
+
+        if (!cancelled) {
+          setTranslations(english);
+        }
+
+        return;
+      }
+
+      try {
+        const translated = await translateTexts(
+          UI_TEXT,
+          language,
+          "en"
+        );
+
+        if (cancelled) return;
+
+        const result = {};
+
+        UI_TEXT.forEach((text, index) => {
+          result[text] = translated[index] || text;
+        });
+
+        setTranslations(result);
+      } catch (error) {
+        console.error(
+          "Crop Scanner translation failed:",
+          error
+        );
+      }
+    }
+
+    translatePage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
+
+  /*
+   * =========================================================
    * LOAD DISEASE MODEL
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   useEffect(() => {
@@ -84,22 +205,23 @@ export default function CropScannerPage() {
     async function initializeDiseaseModel() {
       try {
         setModelLoading(true);
-        setError("");
+        setModelError("");
 
         await loadDiseaseModel();
 
         if (!cancelled) {
           setModelReady(true);
         }
-      } catch (err) {
+      } catch (error) {
         console.error(
           "Disease model loading failed:",
-          err
+          error
         );
 
         if (!cancelled) {
-          setError(
-            err?.message ||
+          setModelReady(false);
+          setModelError(
+            error?.message ||
               "Unable to load the disease detection model."
           );
         }
@@ -118,12 +240,14 @@ export default function CropScannerPage() {
   }, []);
 
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * LOAD FARM + CROP + RECENT SCANS
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadFarmData() {
       try {
         const {
@@ -131,13 +255,8 @@ export default function CropScannerPage() {
           error: userError,
         } = await supabase.auth.getUser();
 
-        if (userError) {
-          throw userError;
-        }
-
-        if (!user) {
-          return;
-        }
+        if (userError) throw userError;
+        if (!user || cancelled) return;
 
         const {
           data: farm,
@@ -149,11 +268,9 @@ export default function CropScannerPage() {
           .limit(1)
           .maybeSingle();
 
-        if (farmError) {
-          throw farmError;
-        }
+        if (farmError) throw farmError;
 
-        if (farm) {
+        if (farm && !cancelled) {
           setFarmId(farm.id);
 
           const {
@@ -166,11 +283,9 @@ export default function CropScannerPage() {
             .limit(1)
             .maybeSingle();
 
-          if (cropError) {
-            throw cropError;
-          }
+          if (cropError) throw cropError;
 
-          if (cropData) {
+          if (cropData && !cancelled) {
             setSelectedCrop(cropData.name);
           }
         }
@@ -187,54 +302,57 @@ export default function CropScannerPage() {
           error: scansError,
         } = await supabase
           .from("disease_reports")
-          .select(
-            "id, crop_name, notes, created_at"
-          )
+          .select("id, crop_name, notes, created_at")
           .eq("user_id", user.id)
           .order("created_at", {
             ascending: false,
           })
           .limit(5);
 
-        if (scansError) {
-          throw scansError;
-        }
+        if (scansError) throw scansError;
 
-        setRecentScans(scans || []);
-      } catch (err) {
+        if (!cancelled) {
+          setRecentScans(scans || []);
+        }
+      } catch (error) {
         console.error(
           "Failed to load scanner data:",
-          err
+          error
         );
       }
     }
 
     loadFarmData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * FILE SELECTION
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   function handleFileChange(e) {
     const file = e.target.files?.[0];
 
-    if (!file) {
-      return;
-    }
+    if (!file) return;
+
+    setMessage("");
+    setModelError("");
 
     if (file.size > 10 * 1024 * 1024) {
-      setError(
-        "The image is larger than 10MB. Please choose a smaller image."
+      setMessage(
+        t("Please choose an image smaller than 10MB.")
       );
       return;
     }
 
     if (!file.type.startsWith("image/")) {
-      setError(
-        "Please choose a JPG, PNG, or WEBP image."
+      setMessage(
+        t("Please choose a JPG, PNG, or WEBP image.")
       );
       return;
     }
@@ -251,17 +369,14 @@ export default function CropScannerPage() {
     setDisease(null);
     setConfidence(null);
     setSeverity("Moderate");
-
     setExplanation("");
-
-    setError("");
     setMessage("");
   }
 
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * CLEAN PREVIEW URL
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   useEffect(() => {
@@ -273,158 +388,156 @@ export default function CropScannerPage() {
   }, [previewUrl]);
 
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * ANALYZE IMAGE
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   async function analyzeImage() {
-    if (!selectedFile) {
-      setError("Please upload a leaf photo first.");
+    if (!selectedFile || !previewUrl) {
+      setMessage(t("No photo uploaded yet"));
       return;
     }
 
     if (!modelReady) {
-      setError(
-        "Disease detection model is still loading. Please wait."
-      );
-      return;
-    }
-
-    if (!imageRef.current) {
-      setError(
-        "The uploaded image is not ready yet. Please try again."
+      setMessage(
+        t("Disease detection model is still loading. Please wait.")
       );
       return;
     }
 
     setAnalyzing(true);
-    setError("");
     setMessage("");
     setDisease(null);
     setConfidence(null);
+    setSeverity("Moderate");
     setExplanation("");
 
     try {
-      const detection = await detectDisease(
-        imageRef.current
-      );
+      const image = new Image();
 
-      if (!detection) {
-        throw new Error(
-          "The disease model returned no result."
+      image.onload = async () => {
+        try {
+          imageRef.current = image;
+
+          const detection = await detectDisease(image);
+
+          if (!detection) {
+            throw new Error(
+              "Disease model returned no result."
+            );
+          }
+
+          const diseaseName =
+            detection.diseaseName ||
+            detection.disease ||
+            detection.label ||
+            detection.name ||
+            "Unknown";
+
+          const numericConfidence = Number(
+            detection.confidence
+          );
+
+          setDisease(diseaseName);
+
+          setConfidence(
+            Number.isFinite(numericConfidence)
+              ? numericConfidence
+              : null
+          );
+
+          setSeverity(
+            detection.severity || "Moderate"
+          );
+
+          if (
+            diseaseName === "Unknown" ||
+            diseaseName === "Unknown disease"
+          ) {
+            setExplanation(
+              t(
+                "Unable to confidently identify this disease. Please upload a clearer leaf photo."
+              )
+            );
+
+            return;
+          }
+
+          try {
+            const explanationText =
+              await getDiseaseExplanation(
+                diseaseName,
+                selectedCrop,
+                language
+              );
+
+            setExplanation(
+              explanationText ||
+                t(
+                  "The disease was detected, but the detailed AI explanation is currently unavailable."
+                )
+            );
+          } catch (error) {
+            console.error(
+              "Gemini explanation failed:",
+              error
+            );
+
+            setExplanation(
+              t(
+                "AI explanation unavailable offline. Connect to the internet to get treatment and prevention guidance."
+              )
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Disease detection failed:",
+            error
+          );
+
+          setMessage(
+            t("Unable to analyze this image.")
+          );
+        } finally {
+          setAnalyzing(false);
+        }
+      };
+
+      image.onerror = () => {
+        setAnalyzing(false);
+
+        setMessage(
+          t("Unable to load the selected image.")
         );
-      }
+      };
 
-      /*
-       * Support multiple possible response shapes
-       * from the disease detection service.
-       */
+      image.src = previewUrl;
+    } catch (error) {
+      console.error(error);
 
-      const diseaseName =
-        detection.diseaseName ||
-        detection.disease ||
-        detection.label ||
-        detection.name ||
-        "Unknown";
-
-      const detectedConfidence = Number(
-        detection.confidence
-      );
-
-      const detectedSeverity =
-        detection.severity || "Moderate";
-
-      setDisease(diseaseName);
-
-      if (Number.isFinite(detectedConfidence)) {
-        setConfidence(detectedConfidence);
-      } else {
-        setConfidence(null);
-      }
-
-      setSeverity(detectedSeverity);
-
-      /*
-       * Unknown result should not be sent to Gemini.
-       */
-
-      if (
-        diseaseName === "Unknown" ||
-        diseaseName === "Unknown disease"
-      ) {
-        setExplanation(
-          "Unable to confidently identify this disease. Please upload a clearer leaf photo."
-        );
-
-        return;
-      }
-
-      /*
-       * Disease classification happens locally.
-       *
-       * Gemini is only used to generate the explanation,
-       * treatment and prevention guidance.
-       */
-
-      try {
-        const text = await getDiseaseExplanation(
-          diseaseName,
-          selectedCrop || "Unknown"
-        );
-
-        setExplanation(text);
-      } catch (geminiError) {
-        console.error(
-          "Gemini explanation failed:",
-          geminiError
-        );
-
-        setExplanation(
-          "AI explanation unavailable offline. Connect to the internet to get treatment and prevention guidance."
-        );
-      }
-    } catch (err) {
-      console.error(
-        "Disease analysis failed:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Unable to analyse this leaf image."
-      );
-    } finally {
       setAnalyzing(false);
+
+      setMessage(
+        t("Unable to analyze this image.")
+      );
     }
   }
 
   /*
-   * ---------------------------------------------------------
+   * =========================================================
    * SAVE DISEASE RESULT
-   * ---------------------------------------------------------
-   *
-   * IMPORTANT:
-   * This uses queueTableWrite instead of directly inserting
-   * into Supabase.
-   *
-   * Therefore:
-   *   Online  -> queued and synced to Supabase
-   *   Offline -> saved locally and synced later
-   *
-   * The table used is disease_reports.
-   * ---------------------------------------------------------
+   * =========================================================
    */
 
   async function savePrediction() {
     try {
       setSaving(true);
       setMessage("");
-      setError("");
 
       if (!disease || disease === "Unknown") {
         setMessage(
-          "There is no confident disease result to save."
+          t("There is no confident disease result to save.")
         );
         return;
       }
@@ -434,12 +547,10 @@ export default function CropScannerPage() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
-        throw userError;
-      }
+      if (userError) throw userError;
 
       if (!user) {
-        setMessage("Please log in first.");
+        setMessage(t("Please log in first."));
         return;
       }
 
@@ -464,21 +575,13 @@ export default function CropScannerPage() {
         },
       });
 
-      /*
-       * Optimistically update Recent Scans.
-       *
-       * queueTableWrite may save locally first when offline,
-       * so we create the local representation immediately.
-       */
-
       setRecentScans((prev) =>
         [
           {
             id: recordId,
             crop_name: cropName,
             notes,
-            created_at:
-              new Date().toISOString(),
+            created_at: new Date().toISOString(),
           },
           ...prev,
         ].slice(0, 5)
@@ -486,17 +589,19 @@ export default function CropScannerPage() {
 
       setMessage(
         navigator.onLine
-          ? "Disease scan saved — syncing now."
-          : "Saved offline — will sync automatically once you're back online."
+          ? t("Disease scan saved — syncing now.")
+          : t(
+              "Saved offline — will sync automatically once you're back online."
+            )
       );
-    } catch (err) {
+    } catch (error) {
       console.error(
         "Failed to save disease report:",
-        err
+        error
       );
 
-      setError(
-        "Unable to save disease scan."
+      setMessage(
+        t("Unable to save disease scan.")
       );
     } finally {
       setSaving(false);
@@ -504,26 +609,15 @@ export default function CropScannerPage() {
   }
 
   /*
-   * ---------------------------------------------------------
-   * CONFIDENCE DISPLAY
-   * ---------------------------------------------------------
+   * =========================================================
+   * SPEAK EXPLANATION
+   * =========================================================
    */
 
-  const confidenceText =
-    Number.isFinite(Number(confidence))
-      ? `${Number(confidence).toFixed(1)}%`
-      : "--";
-
-  /*
-   * ---------------------------------------------------------
-   * READ EXPLANATION ALOUD
-   * ---------------------------------------------------------
-   */
-
-  function readExplanationAloud() {
+  function speakExplanation() {
     if (
-      !explanation ||
-      !("speechSynthesis" in window)
+      !("speechSynthesis" in window) ||
+      !explanation
     ) {
       return;
     }
@@ -531,49 +625,40 @@ export default function CropScannerPage() {
     window.speechSynthesis.cancel();
 
     const speech =
-      new SpeechSynthesisUtterance(
-        explanation
-      );
+      new SpeechSynthesisUtterance(explanation);
 
-    speech.lang = "hi-IN";
+    speech.lang =
+      SPEECH_LANGUAGES[language] || "en-IN";
 
-    window.speechSynthesis.speak(
-      speech
-    );
+    window.speechSynthesis.speak(speech);
   }
 
-  /*
-   * ---------------------------------------------------------
-   * UI
-   * ---------------------------------------------------------
-   */
+  const scanConfidence =
+    parseConfidenceFromNotes;
 
   return (
-    <Layout title="Crop Scanner">
+    <Layout title={t("Crop Scanner")}>
       <h2 className="font-serif text-2xl font-bold text-[#24352a]">
-        AI Crop Health Scanner
+        {t("AI Crop Health Scanner")}
       </h2>
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-
         {/* LEFT COLUMN */}
 
         <div className="space-y-5">
-
           {/* UPLOAD */}
 
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-[#e8c9a0] bg-[#fbeee0] p-10 text-center">
-
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f3d9b8] text-[#b5651d]">
               <Camera size={26} />
             </div>
 
             <p className="text-lg font-bold text-[#24352a]">
-              Upload or Capture Leaf Photo
+              {t("Upload or Capture Leaf Photo")}
             </p>
 
             <p className="text-sm text-slate-500">
-              JPG, PNG, WEBP · Max 10MB
+              {t("JPG, PNG, WEBP · Max 10MB")}
             </p>
 
             <input
@@ -592,37 +677,34 @@ export default function CropScannerPage() {
               className="mt-1 flex items-center gap-2 rounded-full bg-[#f0a664] px-5 py-2.5 text-sm font-semibold text-[#4a2e10] shadow-sm hover:bg-[#e5924a]"
             >
               <Upload size={16} />
-              Choose Photo
+              {t("Choose Photo")}
             </button>
-
           </div>
 
-          {/* ERROR */}
+          {/* ERROR / MODEL STATUS */}
 
-          {error && (
+          {(message || modelError) && (
             <div className="flex items-start gap-2 rounded-xl bg-red-50 p-4 text-sm text-red-700">
-
               <AlertCircle
                 size={18}
                 className="mt-0.5 shrink-0"
               />
 
-              <span>{error}</span>
-
+              <span>
+                {message || modelError}
+              </span>
             </div>
           )}
 
           {/* TIPS */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <p className="flex items-center gap-2 font-bold text-[#24352a]">
               <Eye size={16} />
-              Tips for Best Results
+              {t("Tips for Best Results")}
             </p>
 
             <ul className="mt-3 space-y-2.5">
-
               {TIPS.map((tip) => (
                 <li
                   key={tip}
@@ -633,24 +715,19 @@ export default function CropScannerPage() {
                     className="shrink-0 text-green-600"
                   />
 
-                  {tip}
+                  {t(tip)}
                 </li>
               ))}
-
             </ul>
-
           </div>
-
         </div>
 
         {/* RIGHT COLUMN */}
 
         <div className="space-y-5">
+          {/* IMAGE / RESULT */}
 
-          {/* IMAGE / ANALYSIS */}
-
-          <div className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-[#e5dfd2]">
-
+          <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-[#e5dfd2]">
             {previewUrl ? (
               <>
                 <img
@@ -670,7 +747,6 @@ export default function CropScannerPage() {
                   }
                   className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1f5b3d] px-5 py-3 text-sm font-bold text-white hover:bg-[#173b27] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-
                   {analyzing ? (
                     <>
                       <Loader2
@@ -678,7 +754,7 @@ export default function CropScannerPage() {
                         className="animate-spin"
                       />
 
-                      Analyzing Leaf...
+                      {t("Analyzing...")}
                     </>
                   ) : modelLoading ? (
                     <>
@@ -687,18 +763,16 @@ export default function CropScannerPage() {
                         className="animate-spin"
                       />
 
-                      Loading AI Model...
+                      {t("Loading disease model...")}
                     </>
                   ) : (
                     <>
                       <ScanSearch size={17} />
 
-                      Analyze Leaf
+                      {t("Analyze Leaf")}
                     </>
                   )}
-
                 </button>
-
               </>
             ) : (
               <>
@@ -707,209 +781,179 @@ export default function CropScannerPage() {
                 </div>
 
                 <p className="font-bold text-[#24352a]">
-                  No photo uploaded yet
+                  {t("No photo uploaded yet")}
                 </p>
 
                 <p className="text-sm text-slate-500">
-                  Upload a leaf photo to get instant disease analysis
+                  {t(
+                    "Upload a leaf photo to get instant disease analysis"
+                  )}
                 </p>
               </>
             )}
 
             {modelLoading && (
               <p className="text-xs text-slate-500">
-                Loading disease detection model...
+                {t("Loading disease model...")}
               </p>
             )}
 
-          </div>
+            {/* DETECTION RESULT */}
 
-          {/* RESULT */}
-
-          {disease && (
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
-              <div className="flex items-start justify-between gap-3">
-
-                <div>
-
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#2f7357]">
-                    AI Diagnosis
-                  </p>
-
-                  <h3 className="mt-1 font-serif text-xl font-bold text-[#24352a]">
-                    {disease}
-                  </h3>
-
-                </div>
-
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    SEVERITY_THEME[severity] ||
-                    SEVERITY_THEME.Moderate
-                  }`}
-                >
-                  {severity}
-                </span>
-
-              </div>
-
-              <div className="mt-4 rounded-xl bg-[#f4f8ef] p-4">
-
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Confidence
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-[#2f7357]">
-                  {confidenceText}
-                </p>
-
-              </div>
-
-              {disease !== "Unknown" && (
-                <button
-                  type="button"
-                  onClick={savePrediction}
-                  disabled={saving}
-                  className="mt-4 flex items-center gap-2 rounded-full bg-[#2f7357] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#245d46] disabled:opacity-60"
-                >
-
-                  {saving ? (
-                    <Loader2
-                      size={14}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <Save size={14} />
-                  )}
-
-                  {saving
-                    ? "Saving..."
-                    : "Save Scan"}
-
-                </button>
-              )}
-
-              {explanation && (
-                <div className="mt-4">
-
-                  <div className="flex items-center gap-2">
-
-                    <Leaf
-                      size={16}
-                      className="text-[#2f7357]"
-                    />
-
-                    <p className="font-bold text-[#24352a]">
-                      AI Explanation
+            {disease && (
+              <div className="mt-3 w-full rounded-2xl bg-[#f4f1e7] p-4 text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                      {t("Detection Result")}
                     </p>
 
+                    <p className="mt-1 text-lg font-bold text-[#24352a]">
+                      {disease}
+                    </p>
                   </div>
 
-                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[#3d4d40]">
-                    {explanation}
-                  </p>
-
-                  <button
-                    type="button"
-                    className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#2f7357]"
-                    onClick={readExplanationAloud}
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      SEVERITY_THEME[severity] ||
+                      SEVERITY_THEME.Moderate
+                    }`}
                   >
-                    <Volume2 size={14} />
-                    Read explanation aloud
-                  </button>
-
+                    {severity}
+                  </span>
                 </div>
-              )}
 
-            </div>
-          )}
+                {confidence !== null && (
+                  <p className="mt-1 text-sm text-slate-500">
+                    {t("Confidence:")}{" "}
+                    {Number(confidence).toFixed(1)}%
+                  </p>
+                )}
 
-          {/* MESSAGE */}
+                {disease !== "Unknown" &&
+                  disease !== "Unknown disease" && (
+                    <button
+                      type="button"
+                      onClick={savePrediction}
+                      disabled={saving}
+                      className="mt-3 flex items-center gap-2 rounded-full bg-[#2f7357] px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    >
+                      {saving ? (
+                        <Loader2
+                          size={14}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <Save size={14} />
+                      )}
 
-          {message && (
-            <p className="text-xs font-medium text-[#2f7357]">
-              {message}
-            </p>
-          )}
+                      {t("Save Scan")}
+                    </button>
+                  )}
+              </div>
+            )}
+
+            {/* AI EXPLANATION */}
+
+            {explanation && (
+              <div className="mt-2 w-full rounded-2xl bg-white p-4 text-left ring-1 ring-[#e5dfd2]">
+                <div className="flex items-center gap-2">
+                  <Leaf
+                    size={16}
+                    className="text-[#2f7357]"
+                  />
+
+                  <p className="font-bold text-[#24352a]">
+                    {t("AI Explanation")}
+                  </p>
+                </div>
+
+                <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[#3d4d40]">
+                  {explanation}
+                </p>
+
+                <button
+                  type="button"
+                  className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#2f7357]"
+                  onClick={speakExplanation}
+                >
+                  <Volume2 size={14} />
+                  {t("Read explanation aloud")}
+                </button>
+              </div>
+            )}
+
+            {message && (
+              <p className="text-xs font-medium text-[#2f7357]">
+                {message}
+              </p>
+            )}
+          </div>
 
           {/* RECENT SCANS */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
-
             <p className="font-bold text-[#24352a]">
-              Recent Scans
+              {t("Recent Scans")}
             </p>
 
             <div className="mt-3 space-y-1">
-
               {recentScans.length === 0 ? (
                 <p className="py-4 text-sm text-slate-500">
-                  No saved scans yet.
+                  {t("No saved scans yet.")}
                 </p>
               ) : (
                 recentScans.map((scan) => {
-
-                  const scanConfidence =
-                    parseConfidenceFromNotes(
-                      scan.notes
-                    );
+                  const confidenceValue =
+                    scanConfidence(scan.notes);
 
                   return (
                     <div
                       key={scan.id}
                       className="flex items-center justify-between rounded-xl px-2 py-2.5 hover:bg-[#f7f5ee]"
                     >
-
                       <div className="flex items-center gap-3">
-
                         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f4f1e7] text-[#1f5b3d]">
                           <Leaf size={16} />
                         </div>
 
                         <div>
-
                           <p className="text-sm font-semibold text-[#24352a]">
-                            {scan.crop_name || "Crop"}
+                            {scan.crop_name ||
+                              t("Crop")}
                           </p>
 
                           <p className="text-xs text-slate-500">
-                            {new Date(
-                              scan.created_at
-                            ).toLocaleDateString()}
+                            {scan.created_at
+                              ? new Date(
+                                  scan.created_at
+                                ).toLocaleDateString()
+                              : "--"}
                           </p>
-
                         </div>
-
                       </div>
 
-                      {scanConfidence !== null && (
+                      {confidenceValue !== null && (
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            scanConfidence >= 80
+                            confidenceValue >= 80
                               ? SEVERITY_THEME.Mild
-                              : scanConfidence >= 60
+                              : confidenceValue >= 60
                               ? SEVERITY_THEME.Moderate
                               : SEVERITY_THEME.Severe
                           }`}
                         >
-                          {scanConfidence}%
+                          {confidenceValue}%
                         </span>
                       )}
-
                     </div>
                   );
                 })
               )}
-
             </div>
-
           </div>
-
         </div>
-
       </div>
     </Layout>
   );
 }
-

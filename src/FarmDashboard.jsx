@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-
 import {
   Wheat,
   TrendingUp,
@@ -10,7 +9,6 @@ import {
   Zap,
   Mic,
 } from "lucide-react";
-
 import { useNavigate } from "react-router-dom";
 
 import Layout from "./Layout.jsx";
@@ -21,6 +19,77 @@ import {
   estimateProfit,
   getYieldFactors,
 } from "./services/yieldprediction.js";
+
+import { useLanguage } from "./context/LanguageContext";
+import { translateTexts } from "./services/translation";
+
+/*
+ * =============================================================
+ * TRANSLATABLE UI TEXT
+ * =============================================================
+ */
+
+const UI_TEXT = [
+  "Farm Analytics Dashboard",
+  "Ramesh Farm",
+  "Acres",
+  "Nashik",
+
+  "Estimated Yield",
+  "+8% vs last season",
+
+  "Expected Profit",
+  "Cotton",
+  "Wheat",
+
+  "Farm Health Score",
+  "Good condition",
+
+  "Low",
+  "Yield Risk",
+  "No major threats",
+
+  "Yield History (Quintals)",
+
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+  "Jan",
+
+  "Key Yield Factors",
+  "Soil Moisture",
+  "Fertilizer Level",
+  "Pest Control",
+  "Weather Impact",
+
+  "What-If Simulator",
+  "Predictive AI",
+
+  "Rainfall",
+  "Fertilizer",
+
+  "Predicted Results",
+  "Estimated Yield",
+  "Expected Profit",
+
+  "Ask AI to Optimize",
+  "Opens AI Copilot with your current simulation",
+  "Loading yield prediction model...",
+  "Calculating...",
+  "Loading...",
+];
+
+function createTranslationMap(translatedTexts) {
+  const map = {};
+
+  UI_TEXT.forEach((text, index) => {
+    map[text] = translatedTexts[index] || text;
+  });
+
+  return map;
+}
 
 const FARM = {
   name: "Ramesh Farm",
@@ -35,10 +104,76 @@ const FARM = {
 
 export default function FarmDashboardPage() {
   const navigate = useNavigate();
+  const { language } = useLanguage();
 
-  // =========================================================
-  // WHAT-IF INPUTS
-  // =========================================================
+  /*
+   * =========================================================
+   * TRANSLATION
+   * =========================================================
+   */
+
+  const [translations, setTranslations] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTranslations() {
+      try {
+        if (language === "en") {
+          const englishMap = {};
+
+          UI_TEXT.forEach((text) => {
+            englishMap[text] = text;
+          });
+
+          if (!cancelled) {
+            setTranslations(englishMap);
+          }
+
+          return;
+        }
+
+        const translated = await translateTexts(
+          UI_TEXT,
+          language,
+          "en"
+        );
+
+        if (!cancelled) {
+          setTranslations(createTranslationMap(translated));
+        }
+      } catch (error) {
+        console.error(
+          "Farm Dashboard translation failed:",
+          error
+        );
+
+        const fallback = {};
+
+        UI_TEXT.forEach((text) => {
+          fallback[text] = text;
+        });
+
+        if (!cancelled) {
+          setTranslations(fallback);
+        }
+      }
+    }
+
+    loadTranslations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
+
+  const t = (text) => translations[text] || text;
+
+  /*
+   * =========================================================
+   * WHAT-IF INPUTS
+   * =========================================================
+   */
 
   const [rainfall, setRainfall] = useState(50);
   const [fertilizer, setFertilizer] = useState(40);
@@ -48,22 +183,22 @@ export default function FarmDashboardPage() {
     useState(false);
   const [modelError, setModelError] = useState("");
 
-  const [predictedYield, setPredictedYield] =
-    useState(null);
+  const [predictedYield, setPredictedYield] = useState(22);
+  const [predictedProfit, setPredictedProfit] = useState(
+    22 * FARM.marketPricePerQuintal
+  );
 
-  const [predictedProfit, setPredictedProfit] =
-    useState(null);
+  const [yieldFactors, setYieldFactors] = useState(null);
+  const [modelReady, setModelReady] = useState(false);
 
-  const [yieldFactors, setYieldFactors] =
-    useState(null);
-
-  // Used to prevent an older async prediction from
-  // overwriting a newer slider prediction.
+  // Prevent an older async prediction from overwriting a newer one.
   const predictionRequestId = useRef(0);
 
-  // =========================================================
-  // LOAD MODEL
-  // =========================================================
+  /*
+   * =========================================================
+   * LOAD YIELD MODEL + FACTORS
+   * =========================================================
+   */
 
   useEffect(() => {
     let cancelled = false;
@@ -71,10 +206,15 @@ export default function FarmDashboardPage() {
     async function initializeModel() {
       try {
         setModelLoading(true);
+        setModelError("");
 
         await loadYieldModel();
 
         if (cancelled) return;
+
+        if (!cancelled) {
+          setModelReady(true);
+        }
 
         try {
           const factors = await getYieldFactors();
@@ -99,6 +239,7 @@ export default function FarmDashboardPage() {
             error?.message ||
               "Unable to load the yield prediction model."
           );
+          setModelReady(false);
         }
       } finally {
         if (!cancelled) {
@@ -114,18 +255,16 @@ export default function FarmDashboardPage() {
     };
   }, []);
 
-  // =========================================================
-  // RUN PREDICTION
-  // =========================================================
+  /*
+   * =========================================================
+   * RUN YIELD PREDICTION
+   * =========================================================
+   */
 
   useEffect(() => {
-    if (modelLoading) {
-      return;
-    }
+    if (!modelReady) return;
 
-    const requestId =
-      ++predictionRequestId.current;
-
+    const requestId = ++predictionRequestId.current;
     let cancelled = false;
 
     async function runPrediction() {
@@ -133,7 +272,7 @@ export default function FarmDashboardPage() {
       setModelError("");
 
       try {
-        const result = await predictYield({
+        const inputs = {
           crop: FARM.crop,
           season: FARM.season,
           state: FARM.state,
@@ -141,22 +280,39 @@ export default function FarmDashboardPage() {
           rainfall,
           fertilizer,
           pesticide: FARM.pesticide,
-        });
+        };
 
-        const numericYield = Number(result);
+        const result = await predictYield(inputs);
 
-        if (!Number.isFinite(numericYield)) {
+        // Support both a numeric return value and an object response.
+        const yieldValue =
+          typeof result === "number"
+            ? result
+            : Number(
+                result?.predictedYield ??
+                  result?.yield ??
+                  result?.prediction ??
+                  0
+              );
+
+        if (!Number.isFinite(yieldValue)) {
           throw new Error(
-            "Yield model returned an invalid number."
+            "Yield prediction returned an invalid number."
           );
         }
 
-        const profit = estimateProfit(
-          numericYield,
+        const profitValue = estimateProfit(
+          yieldValue,
           FARM.marketPricePerQuintal,
           FARM.area,
           FARM.costPerAcre
         );
+
+        if (!Number.isFinite(Number(profitValue))) {
+          throw new Error(
+            "Profit calculation returned an invalid number."
+          );
+        }
 
         if (
           cancelled ||
@@ -165,8 +321,8 @@ export default function FarmDashboardPage() {
           return;
         }
 
-        setPredictedYield(numericYield);
-        setPredictedProfit(profit);
+        setPredictedYield(yieldValue);
+        setPredictedProfit(Number(profitValue));
       } catch (error) {
         console.error(
           "Yield prediction failed:",
@@ -180,12 +336,29 @@ export default function FarmDashboardPage() {
           return;
         }
 
-        setPredictedYield(null);
-        setPredictedProfit(null);
+        // Safe local fallback so the What-If simulator still works
+        // if the model is temporarily unavailable.
+        const fallbackYield =
+          22 +
+          (Number(rainfall) - 50) * 0.08 +
+          (Number(fertilizer) - 40) * 0.03;
+
+        const safeYield = Math.max(
+          0,
+          Number(fallbackYield)
+        );
+
+        const fallbackProfit =
+          safeYield *
+            FARM.marketPricePerQuintal -
+          FARM.area * FARM.costPerAcre;
+
+        setPredictedYield(safeYield);
+        setPredictedProfit(fallbackProfit);
 
         setModelError(
           error?.message ||
-            "Unable to calculate the yield prediction."
+            "Unable to calculate the yield prediction. Showing an estimated result."
         );
       } finally {
         if (
@@ -202,11 +375,13 @@ export default function FarmDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [modelLoading, rainfall, fertilizer]);
+  }, [modelReady, rainfall, fertilizer]);
 
-  // =========================================================
-  // ASK AI → OPEN COPILOT
-  // =========================================================
+  /*
+   * =========================================================
+   * ASK AI → OPEN COPILOT
+   * =========================================================
+   */
 
   function handleAskAI() {
     if (
@@ -259,23 +434,21 @@ Keep the advice simple and practical for an Indian farmer.
   }
 
   return (
-    <Layout title="Farm Dashboard">
+    <Layout title={t("Farm Analytics Dashboard")}>
       <div className="space-y-6">
-
         {/* HEADER */}
-
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="font-serif text-2xl font-bold text-[#24352a]">
-            Farm Analytics Dashboard
+            {t("Farm Analytics Dashboard")}
           </h2>
 
           <div className="rounded-full bg-white px-4 py-2 text-sm text-slate-500 shadow-sm ring-1 ring-[#e5dfd2]">
-            {FARM.name} · {FARM.area} Acres · Nashik
+            {t(FARM.name)} · {FARM.area} {t("Acres")} ·{" "}
+            {t(FARM.state)}
           </div>
         </div>
 
         {/* MODEL ERROR */}
-
         {modelError && (
           <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
             {modelError}
@@ -283,51 +456,52 @@ Keep the advice simple and practical for an Indian farmer.
         )}
 
         {/* TOP STAT CARDS */}
-
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
           {/* ESTIMATED YIELD */}
-
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e5f0df] text-[#2f7357]">
               <Wheat size={24} />
             </div>
 
             <p className="mt-4 font-serif text-3xl font-bold text-[#2f7357]">
-              58 Q
+              {Number.isFinite(Number(predictedYield))
+                ? `${Number(predictedYield).toFixed(1)} Q`
+                : "58 Q"}
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Estimated Yield
+              {t("Estimated Yield")}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              +8% vs last season
+              {t("+8% vs last season")}
             </p>
           </div>
 
           {/* EXPECTED PROFIT */}
-
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-50 text-green-600">
               <TrendingUp size={24} />
             </div>
 
             <p className="mt-4 font-serif text-3xl font-bold text-green-600">
-              ₹1,10,000
+              {Number.isFinite(Number(predictedProfit))
+                ? `₹${Math.round(
+                    predictedProfit
+                  ).toLocaleString("en-IN")}`
+                : "₹1,10,000"}
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Expected Profit
+              {t("Expected Profit")}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Cotton + Wheat
+              {t("Cotton")} + {t("Wheat")}
             </p>
           </div>
 
           {/* FARM HEALTH */}
-
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
               <Activity size={24} />
@@ -338,46 +512,43 @@ Keep the advice simple and practical for an Indian farmer.
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Farm Health Score
+              {t("Farm Health Score")}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Good condition
+              {t("Good condition")}
             </p>
           </div>
 
           {/* YIELD RISK */}
-
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
               <AlertTriangle size={24} />
             </div>
 
             <p className="mt-4 font-serif text-3xl font-bold text-orange-500">
-              Low
+              {t("Low")}
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Yield Risk
+              {t("Yield Risk")}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              No major threats
+              {t("No major threats")}
             </p>
           </div>
         </div>
 
         {/* HISTORY + FACTORS */}
-
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.7fr_0.8fr]">
-
+          {/* HISTORY */}
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
-              Yield History (Quintals)
+              {t("Yield History (Quintals)")}
             </h3>
 
             <div className="relative mt-5 h-[250px]">
-
               <div className="absolute left-0 top-0 flex h-[190px] flex-col justify-between text-xs text-slate-500">
                 <span>80</span>
                 <span>60</span>
@@ -505,42 +676,47 @@ Keep the advice simple and practical for an Indian farmer.
               </svg>
 
               <div className="absolute bottom-1 left-7 right-0 flex justify-between text-xs text-slate-500">
-                <span>Aug</span>
-                <span>Sep</span>
-                <span>Oct</span>
-                <span>Nov</span>
-                <span>Dec</span>
-                <span>Jan</span>
+                <span>{t("Aug")}</span>
+                <span>{t("Sep")}</span>
+                <span>{t("Oct")}</span>
+                <span>{t("Nov")}</span>
+                <span>{t("Dec")}</span>
+                <span>{t("Jan")}</span>
               </div>
             </div>
           </div>
 
+          {/* FACTORS */}
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
-              Key Yield Factors
+              {t("Key Yield Factors")}
             </h3>
 
             <div className="mt-5 space-y-5">
               <Factor
-                label="Soil Moisture"
-                value={72}
+                label={t("Soil Moisture")}
+                value={
+                  yieldFactors?.soilMoisture ??
+                  yieldFactors?.soil_moisture ??
+                  72
+                }
                 color="bg-blue-500"
               />
 
               <Factor
-                label="Fertilizer Level"
-                value={65}
+                label={t("Fertilizer Level")}
+                value={fertilizer}
                 color="bg-green-500"
               />
 
               <Factor
-                label="Pest Control"
+                label={t("Pest Control")}
                 value={FARM.pesticide}
                 color="bg-[#2f7357]"
               />
 
               <Factor
-                label="Weather Impact"
+                label={t("Weather Impact")}
                 value={Math.max(
                   0,
                   Math.min(100, 100 - rainfall)
@@ -551,10 +727,8 @@ Keep the advice simple and practical for an Indian farmer.
           </div>
         </div>
 
-        {/* WHAT IF */}
-
+        {/* WHAT-IF SIMULATOR */}
         <div className="rounded-3xl bg-[#d9f4dc] p-6">
-
           <div className="flex flex-wrap items-center gap-2">
             <Zap
               size={21}
@@ -562,48 +736,43 @@ Keep the advice simple and practical for an Indian farmer.
             />
 
             <h3 className="font-serif text-xl font-bold text-[#24352a]">
-              What-If Simulator
+              {t("What-If Simulator")}
             </h3>
 
             <span className="rounded-full bg-[#2f7357] px-3 py-1 text-xs font-bold text-white">
-              Predictive AI
+              {t("Predictive AI")}
             </span>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_1fr_1.25fr]">
-
             {/* RAINFALL */}
-
             <SliderControl
               icon={<CloudRain size={18} />}
-              label="Rainfall"
+              label={t("Rainfall")}
               value={rainfall}
               setValue={setRainfall}
               unit="mm"
             />
 
             {/* FERTILIZER */}
-
             <SliderControl
               icon={<Sprout size={18} />}
-              label="Fertilizer"
+              label={t("Fertilizer")}
               value={fertilizer}
               setValue={setFertilizer}
               unit="%"
             />
 
             {/* RESULTS */}
-
             <div className="rounded-2xl bg-white p-5">
-
               <p className="text-xs font-bold tracking-wide text-slate-500">
-                PREDICTED RESULTS
+                {t("Predicted Results")}
               </p>
 
               <div className="mt-5">
                 <p className="font-serif text-3xl font-bold text-[#2f7357]">
                   {predictionLoading
-                    ? "Calculating..."
+                    ? t("Calculating...")
                     : Number.isFinite(
                         Number(predictedYield)
                       )
@@ -611,11 +780,11 @@ Keep the advice simple and practical for an Indian farmer.
                           predictedYield
                         ).toFixed(1)
                       : "0.0"}{" "}
-                  Q
+                  {!predictionLoading && "Q"}
                 </p>
 
                 <p className="text-sm text-slate-500">
-                  Estimated Yield
+                  {t("Estimated Yield")}
                 </p>
               </div>
 
@@ -623,27 +792,27 @@ Keep the advice simple and practical for an Indian farmer.
 
               <div>
                 <p className="text-2xl font-bold text-green-600">
-                  ₹
                   {predictionLoading
-                    ? "Calculating..."
-                    : Number.isFinite(
-                        Number(predictedProfit)
-                      )
-                      ? Number(
-                          predictedProfit
-                        ).toLocaleString("en-IN", {
-                          maximumFractionDigits: 0,
-                        })
-                      : "0"}
+                    ? t("Calculating...")
+                    : `₹${
+                        Number.isFinite(
+                          Number(predictedProfit)
+                        )
+                          ? Number(
+                              predictedProfit
+                            ).toLocaleString("en-IN", {
+                              maximumFractionDigits: 0,
+                            })
+                          : "0"
+                      }`}
                 </p>
 
                 <p className="text-sm text-slate-500">
-                  Expected Profit
+                  {t("Expected Profit")}
                 </p>
               </div>
 
               {/* AI OPTIMIZATION */}
-
               <button
                 type="button"
                 onClick={handleAskAI}
@@ -660,21 +829,22 @@ Keep the advice simple and practical for an Indian farmer.
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-[#2f7357] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#245d46] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Mic size={17} />
-                Ask AI to Optimize
+                {t("Ask AI to Optimize")}
               </button>
 
               <p className="mt-2 text-center text-xs text-slate-400">
-                Opens AI Copilot with your current simulation
+                {t(
+                  "Opens AI Copilot with your current simulation"
+                )}
               </p>
             </div>
           </div>
         </div>
 
         {/* MODEL STATUS */}
-
         {modelLoading && (
           <p className="text-center text-xs text-slate-500">
-            Loading yield prediction model...
+            {t("Loading yield prediction model...")}
           </p>
         )}
       </div>
@@ -682,9 +852,11 @@ Keep the advice simple and practical for an Indian farmer.
   );
 }
 
-// =============================================================
-// FACTOR
-// =============================================================
+/*
+ * =============================================================
+ * FACTOR COMPONENT
+ * =============================================================
+ */
 
 function Factor({
   label,
@@ -721,9 +893,11 @@ function Factor({
   );
 }
 
-// =============================================================
-// SLIDER
-// =============================================================
+/*
+ * =============================================================
+ * SLIDER COMPONENT
+ * =============================================================
+ */
 
 function SliderControl({
   icon,

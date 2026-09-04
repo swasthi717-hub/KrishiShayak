@@ -4,76 +4,124 @@ import React, {
   useEffect,
   useState,
 } from "react";
+
 import { supabase } from "../lib/supabase";
+import { getFarmerProfile } from "../services/farmerProfile";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
+
+  // Basic profile data
   const [profile, setProfile] = useState(null);
+
+  // Complete farmer data:
+  // profile + farm + crops
+  const [farmerData, setFarmerData] = useState(null);
+
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId) => {
+  /**
+   * Fetch complete farmer data from Supabase.
+   *
+   * Returns:
+   * {
+   *   profile,
+   *   farm,
+   *   crops
+   * }
+   */
+  const fetchFarmerData = async (userId) => {
     if (!userId) {
       setProfile(null);
+      setFarmerData(null);
       return null;
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+    try {
+      const data = await getFarmerProfile();
 
-    if (error) {
-      console.error("Error fetching profile:", error);
+      setFarmerData(data);
+      setProfile(data?.profile ?? null);
+
+      return data;
+    } catch (error) {
+      console.error("Error fetching farmer data:", error);
+
+      setProfile(null);
+      setFarmerData(null);
+
       return null;
     }
-
-    setProfile(data);
-    return data;
   };
 
+  /**
+   * Refresh farmer data after onboarding/profile changes.
+   */
   const refreshProfile = async () => {
-    if (!user) return null;
-    return await fetchProfile(user.id);
+    if (!user) {
+      return null;
+    }
+
+    return await fetchFarmerData(user.id);
   };
 
   useEffect(() => {
+    let mounted = true;
+
+    // Get the current session when the app starts
     const getInitialSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      setSession(session);
-      setUser(session?.user ?? null);
+        if (!mounted) return;
 
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      }
-
-      setLoading(false);
-    };
-
-    getInitialSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          await fetchProfile(session.user.id);
+          await fetchFarmerData(session.user.id);
+        }
+      } catch (error) {
+        console.error("Error getting initial session:", error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    getInitialSession();
+
+    // Listen for login/logout/session changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!mounted) return;
+
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          await fetchFarmerData(session.user.id);
         } else {
           setProfile(null);
+          setFarmerData(null);
+        }
+
+        if (mounted) {
+          setLoading(false);
         }
       }
     );
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -83,8 +131,12 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         session,
+        // Existing profile access
         profile,
+        // New complete farmer data
+        farmerData,
         loading,
+        // Refresh after onboarding/profile updates
         refreshProfile,
       }}
     >

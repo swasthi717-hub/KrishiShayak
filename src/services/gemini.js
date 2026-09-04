@@ -1,6 +1,13 @@
-// src/services/gemini.js
 
 import { supabase } from "../lib/supabase";
+
+// =============================================================
+// GEMINI EDGE FUNCTION
+// =============================================================
+
+const ASK_GEMINI_URL =
+  "https://qsnlrzkvirtiaqageadh.supabase.co/functions/v1/ask-gemini";
+
 
 // =============================================================
 // SUPPORTED LANGUAGES
@@ -41,6 +48,7 @@ async function callGemini(prompt) {
 
     if (error) {
       console.error("Gemini Edge Function error:", error);
+
       throw new Error(
         error.message || "Unable to connect to Gemini"
       );
@@ -56,6 +64,7 @@ async function callGemini(prompt) {
 
     if (!data.text || typeof data.text !== "string") {
       console.error("Invalid Gemini response:", data);
+
       throw new Error("Gemini returned an empty response");
     }
 
@@ -86,7 +95,7 @@ export async function getDiseaseExplanation(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a friendly farming assistant helping Indian farmers.
+You are KrishiSahayak, a friendly farming assistant helping Indian farmers.
 
 Respond ONLY in ${language}.
 
@@ -129,7 +138,7 @@ export async function getChatResponse(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a friendly farming assistant helping Indian farmers.
+You are KrishiSahayak, a friendly farming assistant helping Indian farmers.
 
 The farmer's preferred language is ${language}.
 
@@ -165,7 +174,7 @@ Important:
 - If a chemical treatment is discussed, tell the farmer to follow the product label and consult a local agricultural officer.
 - If you do not have enough information, say so instead of making up facts.
 
-If the question is not related to farming, politely explain that KrishiShayak is mainly designed for farming-related questions.
+If the question is not related to farming, politely explain that KrishiSahayak is mainly designed for farming-related questions.
 
 Farmer's question:
 ${question}
@@ -185,7 +194,10 @@ function identifyRisks(weatherData) {
   const humidity = Number(weatherData?.humidity);
   const temperature = Number(weatherData?.temperature);
 
-  if (Number.isFinite(rainProbability) && rainProbability > 70) {
+  if (
+    Number.isFinite(rainProbability) &&
+    rainProbability > 70
+  ) {
     risks.push("heavy_rain");
   }
 
@@ -214,13 +226,15 @@ export async function getActionPlan(
     ? crops
         .map(
           (crop) =>
-            `${crop?.name || "Unknown"} (${Number(crop?.acres) || 0} acres)`
+            `${crop?.name || "Unknown"} (${
+              Number(crop?.acres) || 0
+            } acres)`
         )
         .join(", ")
     : "";
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers plan their day.
+You are KrishiSahayak, a farming assistant helping Indian farmers plan their day.
 
 Respond ONLY in ${language}.
 
@@ -293,8 +307,14 @@ Keep all text inside the JSON in ${language}.
   try {
     return JSON.parse(cleanedText);
   } catch (error) {
-    console.error("Invalid Action Plan JSON:", cleanedText);
-    throw new Error("Gemini returned invalid Action Plan data");
+    console.error(
+      "Invalid Action Plan JSON:",
+      cleanedText
+    );
+
+    throw new Error(
+      "Gemini returned invalid Action Plan data"
+    );
   }
 }
 
@@ -303,14 +323,24 @@ Keep all text inside the JSON in ${language}.
 // =============================================================
 
 function calculateTrend(priceHistory) {
-  if (!Array.isArray(priceHistory) || priceHistory.length < 2) {
+  if (
+    !Array.isArray(priceHistory) ||
+    priceHistory.length < 2
+  ) {
     return "stable";
   }
 
   const first = Number(priceHistory[0]);
-  const last = Number(priceHistory[priceHistory.length - 1]);
 
-  if (!Number.isFinite(first) || !Number.isFinite(last) || first === 0) {
+  const last = Number(
+    priceHistory[priceHistory.length - 1]
+  );
+
+  if (
+    !Number.isFinite(first) ||
+    !Number.isFinite(last) ||
+    first === 0
+  ) {
     return "stable";
   }
 
@@ -341,7 +371,9 @@ export async function getMarketRecommendation(
       return `
 Crop: ${crop?.name || "Unknown"}
 Mandi: ${crop?.mandiName || "Unknown"}
-Current price: ₹${Number(crop?.currentPrice) || 0}/quintal
+Current price: ₹${
+        Number(crop?.currentPrice) || 0
+      }/quintal
 Last 4 weeks: ${history.join(", ") || "No history"}
 Calculated trend: ${trend}
 `;
@@ -349,7 +381,7 @@ Calculated trend: ${trend}
     .join("\n");
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers decide when to sell crops.
+You are KrishiSahayak, a farming assistant helping Indian farmers decide when to sell crops.
 
 Respond ONLY in ${language}.
 
@@ -415,7 +447,7 @@ export async function getYieldExplanation(
   const language = getLanguageName(preferredLanguage);
 
   const prompt = `
-You are KrishiShayak, a farming assistant helping Indian farmers understand a yield prediction.
+You are KrishiSahayak, a farming assistant helping Indian farmers understand a yield prediction.
 
 Respond ONLY in ${language}.
 

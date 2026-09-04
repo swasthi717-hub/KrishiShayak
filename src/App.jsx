@@ -5,7 +5,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import ResetPassword from "./ResetPassword";
 import LandingPage from "./KrishiSahayakLanding.jsx";
-import KrishiShayakDashboard from "./KrishiShayakDashboard.jsx";
+import OnboardingPage from "./OnboardingPage.jsx";
+import KrishiSahayakDashboard from "./KrishiSahayakDashboard.jsx";
 import AiCopilotPage from "./AiCopilotPage.jsx";
 import WeatherPage from "./WeatherPage.jsx";
 import CropScannerPage from "./CropScannerPage.jsx";
@@ -13,7 +14,6 @@ import MandiMarketPage from "./MandiMarketPage.jsx";
 import FarmDashboard from "./FarmDashboard.jsx";
 import SmartAlertsPage from "./SmartAlertsPage.jsx";
 import ProfilePage from "./ProfilePage.jsx";
-import OnboardingPage from "./OnboardingPage.jsx";
 
 // FIX: removed the duplicate <AuthProvider> that was wrapping routes here
 // — main.jsx already wraps <App /> in one AuthProvider, so this was a
@@ -27,17 +27,13 @@ import OnboardingPage from "./OnboardingPage.jsx";
 // ForegroundAlertToast UI. Having both mounted meant a single foreground
 // push likely fired twice. Layout.jsx's version is kept since it has the
 // nicer toast and already covers every page (Layout wraps all routes).
-
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
 
         {/* Landing Page */}
-        <Route
-          path="/"
-          element={<LandingPage />}
-        />
+        <Route path="/" element={<LandingPage />} />
 
         {/* Onboarding Page */}
         <Route
@@ -54,7 +50,7 @@ export default function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <KrishiShayakDashboard />
+              <KrishiSahayakDashboard />
             </ProtectedRoute>
           }
         />
