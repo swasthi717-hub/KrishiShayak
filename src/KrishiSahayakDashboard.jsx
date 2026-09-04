@@ -49,15 +49,6 @@ const NAV_ITEMS = [
 
 const ALERTS = [
   {
-    icon: Bug,
-    key: "pestOutbreak",
-    badgeKey: "urgent",
-    descriptionKey: "pestDescription",
-    linkKey: "getAdvice",
-    path: "/ai-copilot",
-    theme: "red",
-  },
-  {
     icon: CloudRain,
     key: "rainTomorrow",
     descriptionKey: "rainDescription",
@@ -73,6 +64,16 @@ const ALERTS = [
     path: "/mandi-market",
     theme: "green",
   },
+  {
+    icon: Bug,
+    key: "pestOutbreak",
+    badgeKey: "urgent",
+    descriptionKey: "pestDescription",
+    linkKey: "getAdvice",
+    path: "/ai-copilot",
+    theme: "red",
+  },
+  
   {
     icon: ThermometerSun,
     key: "heatwave",
