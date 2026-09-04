@@ -16,6 +16,10 @@ import {
   ChevronRight,
   Wind,
   Droplets,
+  Bug,
+  CloudRain,
+  ThermometerSun,
+  Sun,
 } from "lucide-react";
 
 import { useAuth } from "./context/AuthContext";
@@ -27,38 +31,47 @@ const NAV_ITEMS = [
   { label: "Crop Scanner", icon: Camera, path: "/crop-scanner" },
   { label: "Mandi Market", icon: TrendingUp, path: "/mandi-market" },
   { label: "Farm Dashboard", icon: BarChart3, path: "/farm-dashboard" },
-  { label: "Smart Alerts", icon: Bell, path: "/alerts", badge: 3 },
+  {
+    label: "Smart Alerts",
+    icon: Bell,
+    path: "/alerts",
+    badge: 3,
+  },
   { label: "Profile", icon: User, path: "/profile" },
 ];
 
 const ALERTS = [
   {
-    emoji: "⚠️🐛",
+    icon: Bug,
     title: "Pest Outbreak!",
     badge: "Urgent",
     description: "High bollworm risk — inspect cotton today.",
     linkText: "Get Advice",
+    path: "/ai-copilot",
     theme: "red",
   },
   {
-    emoji: "🌧️",
+    icon: CloudRain,
     title: "Rain Tomorrow",
     description: "Skip irrigation today. Drain paddy fields.",
     linkText: "View Weather",
+    path: "/weather",
     theme: "blue",
   },
   {
-    emoji: "📈",
+    icon: TrendingUp,
     title: "Tomato Prices Up",
     description: "₹1,960/Q at Nashik — good time to sell.",
     linkText: "See Prices",
+    path: "/mandi-market",
     theme: "green",
   },
   {
-    emoji: "🌡️",
+    icon: ThermometerSun,
     title: "Heatwave Next Week",
     description: "Temp >40°C on Tuesday. Increase irrigation.",
     linkText: "View Weather",
+    path: "/weather",
     theme: "orange",
   },
 ];
@@ -70,6 +83,7 @@ const STATS = [
     label: "Yield Estimate",
     sub: "+8% vs last season",
     theme: "green",
+    path: "/farm-dashboard",
   },
   {
     icon: TrendingUp,
@@ -77,6 +91,7 @@ const STATS = [
     label: "Expected Profit",
     sub: "This season",
     theme: "green",
+    path: "/farm-dashboard",
   },
   {
     icon: Activity,
@@ -84,6 +99,7 @@ const STATS = [
     label: "Farm Health",
     sub: "Good condition",
     theme: "blue",
+    path: "/farm-dashboard",
   },
   {
     icon: Bell,
@@ -91,6 +107,7 @@ const STATS = [
     label: "Alerts Today",
     sub: "Tap to review",
     theme: "red",
+    path: "/alerts",
   },
 ];
 
@@ -99,18 +116,25 @@ const ALERT_THEMES = {
     card: "bg-red-50 border-red-200",
     link: "text-red-600 hover:text-red-700",
     badge: "bg-red-600 text-white",
+    icon: "text-red-600",
   },
+
   blue: {
     card: "bg-blue-50 border-blue-200",
     link: "text-[#1f5b3d] hover:text-[#173b27]",
+    icon: "text-blue-600",
   },
+
   green: {
     card: "bg-[#e7edda] border-[#c9d9bd]",
     link: "text-[#1f5b3d] hover:text-[#173b27]",
+    icon: "text-[#1f5b3d]",
   },
+
   orange: {
     card: "bg-orange-50 border-orange-200",
     link: "text-[#1f5b3d] hover:text-[#173b27]",
+    icon: "text-orange-600",
   },
 };
 
@@ -130,10 +154,15 @@ function Sidebar() {
 
   return (
     <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-[#e5dfd2] bg-white">
+
       {/* Logo */}
       <div className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1f5b3d] text-white">
-          <Wheat size={18} />
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg text-white">
+          <img
+            src="/logo.png"
+            alt="KrishiSahayak"
+            className="h-full w-full object-contain"
+          />
         </div>
 
         <div className="leading-tight">
@@ -175,33 +204,34 @@ function Sidebar() {
 
       {/* User */}
       <div className="m-3 flex items-center gap-3 rounded-xl bg-[#f4f1e7] p-3">
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
-        {profile?.name
-          ? profile.name
-              .split(" ")
-              .map((word) => word[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase()
-          : "F"}
-      </div>
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
+          {profile?.name
+            ? profile.name
+                .split(" ")
+                .map((word) => word[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()
+            : "F"}
+        </div>
 
-      <div className="leading-tight min-w-0">
-        <p className="truncate text-sm font-semibold text-[#24352a]">
-          {profile?.name || "Farmer"}
-        </p>
+        <div className="leading-tight min-w-0">
+          <p className="truncate text-sm font-semibold text-[#24352a]">
+            {profile?.name || "Farmer"}
+          </p>
 
-        <p className="truncate text-xs text-slate-500">
-          {farm?.district || farm?.state || "Location unavailable"}
-          {crops.length > 0 && (
-            <>
-              {" · "}
-              {crops.map((crop) => crop.crop_name).join(", ")}
-            </>
-          )}
-        </p>
+          <p className="truncate text-xs text-slate-500">
+            {farm?.district || farm?.state || "Location unavailable"}
+
+            {crops.length > 0 && (
+              <>
+                {" · "}
+                {crops.map((crop) => crop.crop_name).join(", ")}
+              </>
+            )}
+          </p>
+        </div>
       </div>
-    </div>
     </aside>
   );
 }
@@ -231,9 +261,13 @@ function TopBar() {
         </button>
 
         {/* Profile */}
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e5f0df] text-[#1f5b3d]">
+        <button
+          onClick={() => navigate("/profile")}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e5f0df] text-[#1f5b3d]"
+          aria-label="Profile"
+        >
           <User size={16} />
-        </div>
+        </button>
 
       </div>
     </header>
@@ -248,6 +282,7 @@ function HeroBanner({ profile }) {
 
   return (
     <div className="relative overflow-hidden rounded-2xl">
+
       <div
         className="h-72 w-full bg-cover bg-center sm:h-64"
         style={{
@@ -258,14 +293,21 @@ function HeroBanner({ profile }) {
       <div className="absolute inset-0 bg-[#1f5b3d]/40" />
 
       <div className="absolute inset-0 flex flex-col justify-between p-5 sm:p-6">
+
         <div className="flex items-start justify-between gap-4">
+
           <div className="max-w-md text-white">
+
             <p className="flex items-center gap-2 text-sm font-semibold text-white">
-              Good Morning <span>☀️</span>
+              Good Morning
+              <Sun size={16} />
             </p>
 
             <h2 className="mt-4 font-serif text-2xl font-bold sm:text-3xl">
-              नमस्ते, {profile?.name ? `${profile.name.split(" ")[0]} जी!` : "किसान जी!"}
+              नमस्ते,{" "}
+              {profile?.name
+                ? `${profile.name.split(" ")[0]} जी!`
+                : "किसान जी!"}
             </h2>
 
             <p className="mt-5 text-sm font-semibold text-white">
@@ -275,6 +317,7 @@ function HeroBanner({ profile }) {
           </div>
 
           <div className="hidden shrink-0 rounded-xl bg-white/15 p-10 text-white backdrop-blur-sm sm:block">
+
             <p className="text-3xl font-bold">
               34°C
             </p>
@@ -284,6 +327,7 @@ function HeroBanner({ profile }) {
             </p>
 
             <div className="mt-3 flex gap-7 text-sm">
+
               <span className="flex items-center gap-1">
                 <Droplets size={12} />
                 68%
@@ -293,12 +337,15 @@ function HeroBanner({ profile }) {
                 <Wind size={12} />
                 12 km/h
               </span>
+
             </div>
           </div>
+
         </div>
 
         {/* Hero buttons */}
         <div className="flex flex-wrap gap-7">
+
           <button
             onClick={() => navigate("/ai-copilot")}
             className="flex items-center gap-2 rounded-full bg-white px-5 py-1.5 text-sm font-semibold text-[#1f5b3d] shadow-sm hover:bg-[#e5f0df]"
@@ -314,6 +361,7 @@ function HeroBanner({ profile }) {
             <Camera size={16} />
             Scan Crop
           </button>
+
         </div>
       </div>
     </div>
@@ -321,20 +369,28 @@ function HeroBanner({ profile }) {
 }
 
 function AlertCard({
-  emoji,
+  icon: Icon,
   title,
   badge,
   description,
   linkText,
+  path,
   theme,
 }) {
+  const navigate = useNavigate();
   const t = ALERT_THEMES[theme];
 
   return (
     <div className={`rounded-xl border-2 p-5 ${t.card}`}>
+
       <div className="flex items-start justify-between gap-2">
+
         <p className="flex items-center gap-2 text-[15px] font-bold text-[#24352a]">
-          <span>{emoji}</span>
+          <Icon
+            size={18}
+            className={t.icon}
+          />
+
           {title}
         </p>
 
@@ -345,6 +401,7 @@ function AlertCard({
             {badge}
           </span>
         )}
+
       </div>
 
       <p className="mt-1.5 text-sm text-slate-500">
@@ -352,11 +409,13 @@ function AlertCard({
       </p>
 
       <button
+        onClick={() => navigate(path)}
         className={`mt-2 flex items-center gap-1 text-sm font-bold ${t.link}`}
       >
         {linkText}
         <ChevronRight size={14} />
       </button>
+
     </div>
   );
 }
@@ -366,7 +425,9 @@ function ActionPlanBanner() {
 
   return (
     <div className="rounded-xl bg-[#e7edda] p-7">
+
       <div className="flex items-center gap-2.5">
+
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#214d34] text-white">
           <Zap size={16} />
         </div>
@@ -374,6 +435,7 @@ function ActionPlanBanner() {
         <p className="font-serif text-xl font-bold text-[#24352a]">
           Today's AI Action Plan
         </p>
+
       </div>
 
       <p className="mt-3 text-sm text-[#3d4d40]">
@@ -389,6 +451,7 @@ function ActionPlanBanner() {
         <Mic size={14} />
         Ask AI for Details
       </button>
+
     </div>
   );
 }
@@ -399,10 +462,17 @@ function StatCard({
   label,
   sub,
   theme,
+  path,
 }) {
+  const navigate = useNavigate();
+
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#e5dfd2]">
+    <button
+      onClick={() => navigate(path)}
+      className="w-full rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-[#e5dfd2] transition hover:-translate-y-0.5 hover:shadow-md"
+    >
       <div className="flex items-center justify-between">
+
         <Icon
           size={18}
           className={STAT_THEMES[theme]}
@@ -412,6 +482,7 @@ function StatCard({
           size={16}
           className="text-slate-300"
         />
+
       </div>
 
       <p
@@ -427,53 +498,63 @@ function StatCard({
       <p className="text-xs text-slate-400">
         {sub}
       </p>
-    </div>
+
+    </button>
   );
 }
 
-export default function KrishiShayakDashboard() {
+export default function KrishiSahayakDashboard() {
   const navigate = useNavigate();
 
   const { farmerData } = useAuth();
 
   const profile = farmerData?.profile;
 
-  console.log("Farmer data:", farmerData);
-  console.log("Crops:", farmerData?.crops);
-  console.log("Farm:", farmerData?.farm);
-  console.log("Profile:", farmerData?.profile);
   return (
     <div className="flex h-screen w-full bg-[#faf7ef] font-sans text-[#24352a]">
+
       <Sidebar />
 
       <div className="flex flex-1 flex-col overflow-hidden">
+
         <TopBar />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
+
           <div className="mx-auto max-w-5xl space-y-6">
+
             <HeroBanner profile={profile} />
 
             {/* Alerts */}
             <div>
+
               <div className="mb-3 flex items-center justify-between">
+
                 <h3 className="font-serif text-lg font-semibold text-[#24352a]">
                   Today's Alerts
                 </h3>
 
-                <button className="flex items-center gap-1 text-sm font-medium text-[#1f5b3d] hover:text-[#173b27]">
+                <button
+                  onClick={() => navigate("/alerts")}
+                  className="flex items-center gap-1 text-sm font-medium text-[#1f5b3d] hover:text-[#173b27]"
+                >
                   View All
                   <ChevronRight size={14} />
                 </button>
+
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
                 {ALERTS.map((alert) => (
                   <AlertCard
                     key={alert.title}
                     {...alert}
                   />
                 ))}
+
               </div>
+
             </div>
 
             {/* AI Action Plan */}
@@ -481,17 +562,22 @@ export default function KrishiShayakDashboard() {
 
             {/* Stats */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
               {STATS.map((stat) => (
                 <StatCard
                   key={stat.label}
                   {...stat}
                 />
               ))}
+
             </div>
+
           </div>
+
         </main>
+
       </div>
+
     </div>
   );
 }
-

@@ -37,13 +37,17 @@ function Sidebar() {
       
       {/* Logo */}
       <div className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1f5b3d] text-white">
-          <Wheat size={18} />
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg text-white">
+          <img
+            src="/logo.png"
+            alt="KrishiSahayak"
+            className="h-full w-full object-contain"
+          />
         </div>
 
         <div className="leading-tight">
           <p className="font-serif text-sm font-bold text-[#254a32]">
-            KrishiShayak
+            KrishiSahayak
           </p>
 
           <p className="text-xs text-slate-500">

@@ -272,10 +272,10 @@ export default function ProfilePage() {
                     }`}
                   >
                     <span
-                      className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                      className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
                         alert.enabled
-                          ? "translate-x-6"
-                          : "translate-x-1"
+                          ? "translate-x-5"
+                          : "translate-x-0"
                       }`}
                     />
                   </button>

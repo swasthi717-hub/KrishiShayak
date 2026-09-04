@@ -6,7 +6,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import ResetPassword from "./ResetPassword";
 import LandingPage from "./KrishiSahayakLanding.jsx";
-import KrishiShayakDashboard from "./KrishiShayakDashboard.jsx";
+import KrishiSahayakDashboard from "./KrishiSahayakDashboard.jsx";
 import AiCopilotPage from "./AiCopilotPage.jsx";
 import WeatherPage from "./WeatherPage.jsx";
 import CropScannerPage from "./CropScannerPage.jsx";
@@ -43,7 +43,7 @@ export default function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <KrishiShayakDashboard />
+              <KrishiSahayakDashboard />
             </ProtectedRoute>
           }
         />
