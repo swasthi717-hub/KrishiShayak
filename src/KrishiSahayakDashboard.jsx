@@ -467,7 +467,7 @@ function HeroBanner({ t, language, profile }) {
     firstName
       ? language === "hi" || language === "hi-IN"
         ? `नमस्ते, ${firstName} जी!`
-        : `Namaste, ${firstName}!`
+        : `Namaste, ${firstName} ji!`
       : t.hero.greeting;
 
   return (

@@ -102,6 +102,10 @@ const LAYOUT_TEXTS = {
   smartAlerts: "Smart Alerts",
   profile: "Profile",
 
+  // Used only for the same dynamic sidebar fallback as the Dashboard.
+  userName: "Ramesh Patil",
+  userFarm: "Nashik · Cotton, Wheat",
+
   aiFarmingCopilot: "AI Farming Copilot",
 
   offline: "Offline",
@@ -129,20 +133,20 @@ function Sidebar({ translations, language }) {
     ? farmerData.crops
     : [];
 
-  const farmerName =
-    profile?.name ||
-    profile?.full_name ||
-    "Ramesh Patil";
+  // Keep the same dynamic data logic used by the Dashboard sidebar.
+  const userName = profile?.name || translations.userName;
 
-  const location =
-    [profile?.district, profile?.state]
-      .filter(Boolean)
-      .join(" · ") || "Location unavailable";
+  const farmDetails =
+    farm?.district ||
+    farm?.state ||
+    translations.userFarm;
 
   const cropNames = crops
-    .map((crop) => crop?.name)
+    .map((crop) => crop?.crop_name)
     .filter(Boolean)
-    .join(" · ");
+    .join(", ");
+
+  const farmerName = userName;
 
   const initials = farmerName
     .split(" ")
@@ -208,7 +212,7 @@ function Sidebar({ translations, language }) {
       {/* User */}
       <div className="m-3 flex items-center gap-3 rounded-xl bg-[#f4f1e7] p-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
-          {initials || "RP"}
+          {initials || "F"}
         </div>
 
         <div className="min-w-0 leading-tight">
@@ -217,7 +221,7 @@ function Sidebar({ translations, language }) {
           </p>
 
           <p className="truncate text-xs text-slate-500">
-            {location}
+            {farmDetails}
 
             {cropNames && (
               <>
