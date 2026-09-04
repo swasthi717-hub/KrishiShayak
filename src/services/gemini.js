@@ -24,7 +24,11 @@ export const LANGUAGE_NAMES = {
 // GENERIC GEMINI CALL
 // =============================================================
 
-async function callGemini(prompt) {
+async function callGemini(
+  prompt,
+  language = "en",
+  context = {}
+) {
   if (!prompt || typeof prompt !== "string") {
     throw new Error("Gemini prompt is required");
   }
@@ -36,6 +40,8 @@ async function callGemini(prompt) {
         {
           body: {
             prompt,
+            language,
+            context,
           },
         }
       );
@@ -138,7 +144,10 @@ Important safety rules:
 Keep the answer short and easy to understand.
 `;
 
-  return callGemini(prompt);
+  return callGemini(
+    prompt,
+    preferredLanguage
+  );
 }
 
 // =============================================================
@@ -180,8 +189,8 @@ function createWeatherContext(weather) {
       precipitationProbability:
         daily
           ?.precipitation_probability_max?.[
-          i
-        ] ?? null,
+            i
+          ] ?? null,
 
       precipitation:
         daily?.precipitation_sum?.[i] ??
@@ -381,7 +390,7 @@ Respond ONLY in ${language}.
 IMPORTANT DATA RULES
 ============================================================
 
-1. The weather information above comes from a live weather API.
+1. The weather information above comes from the live weather API used by the application.
 
 2. The mandi information above comes from the supplied mandi API data.
 
@@ -401,7 +410,7 @@ IMPORTANT DATA RULES
 
 10. If the farmer asks about selling a crop, use the supplied mandi records when available.
 
-11. If several mandi records are available, compare their prices and markets rather than choosing a market without evidence.
+11. If several mandi records are available, compare their actual prices and markets rather than choosing a market without evidence.
 
 12. Do not confuse min price, max price, and modal price.
 
@@ -418,6 +427,7 @@ ANSWER STYLE
 ============================================================
 
 Keep the answer:
+
 - Simple
 - Practical
 - Short
@@ -454,7 +464,15 @@ FINAL ANSWER
 ============================================================
 `;
 
-  return callGemini(prompt);
+  return callGemini(
+    prompt,
+    preferredLanguage,
+    {
+      location: locationContext,
+      weather: context?.weather || null,
+      mandi: context?.mandi || null,
+    }
+  );
 }
 
 // =============================================================
@@ -589,7 +607,10 @@ Keep all text inside the JSON in ${language}.
 `;
 
   const rawText =
-    await callGemini(prompt);
+    await callGemini(
+      prompt,
+      preferredLanguage
+    );
 
   const cleanedText = rawText
     .replace(/```json/gi, "")
@@ -720,7 +741,10 @@ Keep all text inside the JSON in ${language}.
 `;
 
   const rawText =
-    await callGemini(prompt);
+    await callGemini(
+      prompt,
+      preferredLanguage
+    );
 
   const cleanedText = rawText
     .replace(/```json/gi, "")
@@ -786,5 +810,8 @@ Important:
 Keep the response simple and practical.
 `;
 
-  return callGemini(prompt);
+  return callGemini(
+    prompt,
+    preferredLanguage
+  );
 }

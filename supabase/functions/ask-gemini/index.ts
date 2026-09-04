@@ -4,11 +4,19 @@ import {
   corsHeaders,
 } from "npm:@supabase/supabase-js@^2/cors";
 
+// =============================================================
+// CONFIGURATION
+// =============================================================
+
 const GEMINI_API_KEY =
   Deno.env.get("GEMINI_API_KEY");
 
 const GEMINI_MODEL =
   "gemini-3.6-flash";
+
+// =============================================================
+// EDGE FUNCTION
+// =============================================================
 
 Deno.serve(async (req) => {
   // =========================================================
@@ -22,7 +30,7 @@ Deno.serve(async (req) => {
   }
 
   // =========================================================
-  // METHOD
+  // METHOD CHECK
   // =========================================================
 
   if (req.method !== "POST") {
@@ -42,7 +50,7 @@ Deno.serve(async (req) => {
   }
 
   // =========================================================
-  // API KEY
+  // GEMINI API KEY CHECK
   // =========================================================
 
   if (!GEMINI_API_KEY) {
@@ -68,12 +76,22 @@ Deno.serve(async (req) => {
 
   try {
     // =======================================================
-    // REQUEST BODY
+    // READ REQUEST BODY
     // =======================================================
 
     const body = await req.json();
 
     const prompt = body?.prompt;
+
+    const language =
+      body?.language || "en";
+
+    const context =
+      body?.context || {};
+
+    // =======================================================
+    // VALIDATE PROMPT
+    // =======================================================
 
     if (
       !prompt ||
@@ -81,7 +99,8 @@ Deno.serve(async (req) => {
     ) {
       return new Response(
         JSON.stringify({
-          error: "Prompt is required",
+          error:
+            "Prompt is required",
         }),
         {
           status: 400,
@@ -95,7 +114,178 @@ Deno.serve(async (req) => {
     }
 
     // =======================================================
-    // GEMINI REQUEST
+    // EXTRACT CONTEXT
+    // =======================================================
+
+    const location =
+      context?.location || {};
+
+    const weather =
+      context?.weather || {};
+
+    const mandi =
+      context?.mandi || {};
+
+    // =======================================================
+    // BUILD FINAL GEMINI PROMPT
+    // =======================================================
+
+    const finalPrompt = `
+You are KrishiShayak, a friendly AI farming assistant helping Indian farmers.
+
+Your job is to answer the farmer's question using the REAL application data supplied below.
+
+============================================================
+FARMER QUESTION
+============================================================
+
+${prompt}
+
+============================================================
+PREFERRED LANGUAGE
+============================================================
+
+${language}
+
+Respond ONLY in the requested language.
+
+============================================================
+FARMER LOCATION
+============================================================
+
+${JSON.stringify(
+  location,
+  null,
+  2
+)}
+
+============================================================
+LIVE WEATHER DATA
+============================================================
+
+${JSON.stringify(
+  weather,
+  null,
+  2
+)}
+
+============================================================
+LIVE MANDI DATA
+============================================================
+
+${JSON.stringify(
+  mandi,
+  null,
+  2
+)}
+
+============================================================
+IMPORTANT DATA RULES
+============================================================
+
+1. The weather data supplied above comes from the application's weather API.
+
+2. The mandi data supplied above comes from the application's mandi API.
+
+3. Use the supplied real data whenever it is relevant to the farmer's question.
+
+4. NEVER invent a weather value.
+
+5. NEVER invent a mandi price.
+
+6. NEVER invent a market, district, commodity, variety, grade, or arrival date.
+
+7. NEVER claim that a future market price is known.
+
+8. If mandi data is unavailable or contains no records, clearly tell the farmer that current mandi data is unavailable.
+
+9. If weather data is unavailable, clearly tell the farmer that live weather data is unavailable.
+
+10. If the farmer asks about "today", use the supplied current/live data.
+
+11. If the farmer asks about rainfall or weather, use the supplied weather data.
+
+12. If the farmer asks about mandi prices, selling, market rates, or crop prices, use the supplied mandi records when available.
+
+13. If several mandi records are available, compare the actual records instead of inventing a preferred market.
+
+14. Do not confuse minimum price, maximum price, and modal price.
+
+15. Do not convert or modify supplied mandi prices unless the calculation is necessary and clearly explained.
+
+16. Use the farmer's location when it is relevant to the question.
+
+17. Do not invent pesticide names.
+
+18. Do not invent pesticide dosages.
+
+19. Do not invent chemical application schedules.
+
+20. If chemical treatment is discussed, advise the farmer to follow the product label and consult a local agricultural officer.
+
+21. Do not present an AI disease diagnosis as completely certain.
+
+22. If there is insufficient information, say so instead of making up facts.
+
+23. Do not pretend that information is live if the supplied data is unavailable or outdated.
+
+============================================================
+ANSWER STYLE
+============================================================
+
+Keep the answer:
+
+- Simple
+- Practical
+- Short
+- Farmer-friendly
+- Easy to understand
+
+Use bullet points when helpful.
+
+When giving prices, clearly identify:
+- Market
+- Commodity
+- Minimum price
+- Maximum price
+- Modal price
+- Arrival date
+
+Only mention fields that actually exist in the supplied data.
+
+If the question is unrelated to farming, politely explain that KrishiShayak is primarily designed for farming-related questions.
+
+============================================================
+EXAMPLES
+============================================================
+
+Question:
+"आज बारिश होगी क्या?"
+
+Use the supplied weather data and answer based on the actual forecast.
+
+Question:
+"आज प्याज बेचना सही है?"
+
+Use the supplied onion mandi records if available.
+
+Question:
+"मेरे खेत में अभी क्या करना चाहिए?"
+
+Use the farmer's location and current/forecast weather when relevant.
+
+Question:
+"Which mandi has the best onion price?"
+
+Compare the supplied onion mandi records. Do not invent a market or price.
+
+============================================================
+FINAL ANSWER
+============================================================
+`;
+
+    // =======================================================
+    // CALL GEMINI API
     // =======================================================
 
     const response = await fetch(
@@ -116,7 +306,7 @@ Deno.serve(async (req) => {
             {
               parts: [
                 {
-                  text: prompt,
+                  text: finalPrompt,
                 },
               ],
             },
@@ -125,11 +315,15 @@ Deno.serve(async (req) => {
       }
     );
 
+    // =======================================================
+    // READ GEMINI RESPONSE
+    // =======================================================
+
     const data =
       await response.json();
 
     // =======================================================
-    // GEMINI ERROR
+    // HANDLE GEMINI ERROR
     // =======================================================
 
     if (!response.ok) {
@@ -161,7 +355,7 @@ Deno.serve(async (req) => {
     }
 
     // =======================================================
-    // EXTRACT RESPONSE TEXT
+    // EXTRACT GEMINI TEXT
     // =======================================================
 
     const text =
@@ -174,6 +368,10 @@ Deno.serve(async (req) => {
         )
         .join("")
         .trim() || "";
+
+    // =======================================================
+    // EMPTY RESPONSE CHECK
+    // =======================================================
 
     if (!text) {
       console.error(
@@ -207,6 +405,7 @@ Deno.serve(async (req) => {
       }),
       {
         status: 200,
+
         headers: {
           ...corsHeaders,
           "Content-Type":
@@ -214,7 +413,12 @@ Deno.serve(async (req) => {
         },
       }
     );
+
   } catch (error) {
+    // =======================================================
+    // UNEXPECTED ERROR
+    // =======================================================
+
     console.error(
       "ask-gemini error:",
       error
@@ -229,6 +433,7 @@ Deno.serve(async (req) => {
       }),
       {
         status: 500,
+
         headers: {
           ...corsHeaders,
           "Content-Type":
