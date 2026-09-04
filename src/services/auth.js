@@ -29,7 +29,6 @@ export const signUp = async ({
   return data;
 };
 
-
 // ===============================
 // LOGIN
 // ===============================
@@ -47,7 +46,6 @@ export const login = async (email, password) => {
   return data;
 };
 
-
 // ===============================
 // LOGOUT
 // ===============================
@@ -58,7 +56,6 @@ export const logout = async () => {
     throw error;
   }
 };
-
 
 // ===============================
 // GET CURRENT USER
@@ -74,4 +71,34 @@ export const getCurrentUser = async () => {
   }
 
   return user;
+};
+
+// ===============================
+// UPDATE PASSWORD
+// ===============================
+export const updatePassword = async (newPassword) => {
+  const { data, error } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
+// ===============================
+// RESET PASSWORD
+// ===============================
+export const resetPassword = async (email) => {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(
+    email
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 };
