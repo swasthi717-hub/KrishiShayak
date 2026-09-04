@@ -1,5 +1,12 @@
+import { supabase } from "../lib/supabase";
+
+// =============================================================
+// GEMINI EDGE FUNCTION
+// =============================================================
+
 const ASK_GEMINI_URL =
   "https://qsnlrzkvirtiaqageadh.supabase.co/functions/v1/ask-gemini";
+
 
 // =============================================================
 // SUPPORTED LANGUAGES
@@ -25,20 +32,37 @@ const LANGUAGE_NAMES = {
 // =============================================================
 
 async function callGemini(prompt) {
-  const { data, error } = await supabase.functions.invoke("ask-gemini", {
-    body: {
-      prompt,
-    },
-  });
+  const { data, error } =
+    await supabase.functions.invoke(
+      "ask-gemini",
+      {
+        body: {
+          prompt,
+        },
+      }
+    );
 
   if (error) {
-    console.error("Gemini Edge Function error:", error);
-    throw new Error(error.message || "Gemini request failed");
+    console.error(
+      "Gemini Edge Function error:",
+      error
+    );
+
+    throw new Error(
+      error.message ||
+        "Gemini request failed"
+    );
   }
 
   if (!data?.text) {
-    console.error("Gemini returned:", data);
-    throw new Error("Gemini returned an empty response");
+    console.error(
+      "Gemini returned:",
+      data
+    );
+
+    throw new Error(
+      "Gemini returned an empty response"
+    );
   }
 
   return data.text;
@@ -49,8 +73,13 @@ async function callGemini(prompt) {
 // HELPER — GET LANGUAGE NAME
 // =============================================================
 
-function getLanguageName(languageCode = "en") {
-  return LANGUAGE_NAMES[languageCode] || "English";
+function getLanguageName(
+  languageCode = "en"
+) {
+  return (
+    LANGUAGE_NAMES[languageCode] ||
+    "English"
+  );
 }
 
 
@@ -63,7 +92,8 @@ export async function getDiseaseExplanation(
   cropName = "",
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
   const prompt = `You are KrishiShayak, a friendly farming assistant helping Indian farmers.
 
@@ -109,7 +139,8 @@ export async function getChatResponse(
   question,
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
   const prompt = `You are KrishiShayak, a friendly farming assistant helping Indian farmers.
 
@@ -173,7 +204,9 @@ function identifyRisks(weatherData) {
   }
 
   if (weatherData?.humidity > 80) {
-    risks.push("high_humidity_fungal_risk");
+    risks.push(
+      "high_humidity_fungal_risk"
+    );
   }
 
   if (weatherData?.temperature > 38) {
@@ -190,12 +223,17 @@ export async function getActionPlan(
   activeAlerts = [],
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
-  const risks = identifyRisks(weatherData);
+  const risks =
+    identifyRisks(weatherData);
 
   const cropList = crops
-    .map((crop) => `${crop.name} (${crop.acres} acres)`)
+    .map(
+      (crop) =>
+        `${crop.name} (${crop.acres} acres)`
+    )
     .join(", ");
 
   const prompt = `You are KrishiShayak, a farming assistant helping Indian farmers plan their day.
@@ -256,7 +294,8 @@ Include one cropCard for every crop provided.
 
 Keep all text inside the JSON in ${language}.`;
 
-  const rawText = await callGemini(prompt);
+  const rawText =
+    await callGemini(prompt);
 
   const cleanedText = rawText
     .replace(/```json/gi, "")
@@ -266,8 +305,14 @@ Keep all text inside the JSON in ${language}.`;
   try {
     return JSON.parse(cleanedText);
   } catch (error) {
-    console.error("Invalid Action Plan JSON:", cleanedText);
-    throw new Error("Gemini returned invalid Action Plan data");
+    console.error(
+      "Invalid Action Plan JSON:",
+      cleanedText
+    );
+
+    throw new Error(
+      "Gemini returned invalid Action Plan data"
+    );
   }
 }
 
@@ -280,18 +325,33 @@ Keep all text inside the JSON in ${language}.`;
 // Gemini only explains the supplied trend.
 
 function calculateTrend(priceHistory) {
-  if (!Array.isArray(priceHistory) || priceHistory.length < 2) {
+  if (
+    !Array.isArray(priceHistory) ||
+    priceHistory.length < 2
+  ) {
     return "stable";
   }
 
-  const first = Number(priceHistory[0]);
-  const last = Number(priceHistory[priceHistory.length - 1]);
+  const first =
+    Number(priceHistory[0]);
 
-  if (!Number.isFinite(first) || !Number.isFinite(last) || first === 0) {
+  const last =
+    Number(
+      priceHistory[
+        priceHistory.length - 1
+      ]
+    );
+
+  if (
+    !Number.isFinite(first) ||
+    !Number.isFinite(last) ||
+    first === 0
+  ) {
     return "stable";
   }
 
-  const change = ((last - first) / first) * 100;
+  const change =
+    ((last - first) / first) * 100;
 
   if (change > 3) {
     return "rising";
@@ -309,11 +369,15 @@ export async function getMarketRecommendation(
   crops,
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
   const cropData = crops
     .map((crop) => {
-      const trend = calculateTrend(crop.priceHistory);
+      const trend =
+        calculateTrend(
+          crop.priceHistory
+        );
 
       return `
 Crop: ${crop.name}
@@ -356,7 +420,8 @@ The recommendation can be either:
 
 Keep all text inside the JSON in ${language}.`;
 
-  const rawText = await callGemini(prompt);
+  const rawText =
+    await callGemini(prompt);
 
   const cleanedText = rawText
     .replace(/```json/gi, "")
@@ -366,8 +431,14 @@ Keep all text inside the JSON in ${language}.`;
   try {
     return JSON.parse(cleanedText);
   } catch (error) {
-    console.error("Invalid Market Recommendation JSON:", cleanedText);
-    throw new Error("Gemini returned invalid market recommendation data");
+    console.error(
+      "Invalid Market Recommendation JSON:",
+      cleanedText
+    );
+
+    throw new Error(
+      "Gemini returned invalid market recommendation data"
+    );
   }
 }
 
@@ -382,7 +453,8 @@ export async function getYieldExplanation(
   inputs,
   preferredLanguage = "en"
 ) {
-  const language = getLanguageName(preferredLanguage);
+  const language =
+    getLanguageName(preferredLanguage);
 
   const prompt = `You are KrishiShayak, a farming assistant helping Indian farmers understand a yield prediction.
 

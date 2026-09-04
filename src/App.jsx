@@ -2,6 +2,8 @@ import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import LandingPage from "./KrishiSahayakLanding.jsx";
+import OnboardingPage from "./OnboardingPage.jsx";
+
 import KrishiShayakDashboard from "./KrishiShayakDashboard.jsx";
 import AiCopilotPage from "./AiCopilotPage.jsx";
 import WeatherPage from "./WeatherPage.jsx";
@@ -15,62 +17,36 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-
         {/* Landing Page */}
-        <Route
-          path="/"
-          element={<LandingPage />}
-        />
+        <Route path="/" element={<LandingPage />} />
+
+        {/* Onboarding */}
+        <Route path="/onboarding" element={<OnboardingPage />} />
 
         {/* Home / Main Dashboard */}
-        <Route
-          path="/dashboard"
-          element={<KrishiShayakDashboard />}
-        />
+        <Route path="/dashboard" element={<KrishiShayakDashboard />} />
 
         {/* AI Copilot */}
-        <Route
-          path="/ai-copilot"
-          element={<AiCopilotPage />}
-        />
+        <Route path="/ai-copilot" element={<AiCopilotPage />} />
 
         {/* Weather */}
-        <Route
-          path="/weather"
-          element={<WeatherPage />}
-        />
+        <Route path="/weather" element={<WeatherPage />} />
 
         {/* Crop Scanner */}
-        <Route
-          path="/crop-scanner"
-          element={<CropScannerPage />}
-        />
+        <Route path="/crop-scanner" element={<CropScannerPage />} />
 
         {/* Mandi Market */}
-        <Route
-          path="/mandi-market"
-          element={<MandiMarketPage />}
-        />
+        <Route path="/mandi-market" element={<MandiMarketPage />} />
 
         {/* Farm Dashboard */}
-        <Route
-          path="/farm-dashboard"
-          element={<FarmDashboard />}
-        />
+        <Route path="/farm-dashboard" element={<FarmDashboard />} />
 
         {/* Smart Alerts */}
-        <Route
-          path="/alerts"
-          element={<SmartAlertsPage />}
-        />
+        <Route path="/alerts" element={<SmartAlertsPage />} />
 
         {/* Profile */}
-        <Route
-          path="/profile"
-          element={<ProfilePage />}
-        />
-
+        <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </BrowserRouter>
   );
-};
+}

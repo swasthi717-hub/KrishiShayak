@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { signUp, login } from "./services/auth";
 import {
   Leaf,
   Sparkles,
@@ -14,6 +13,8 @@ import {
   ArrowRight,
   X,
 } from "lucide-react";
+
+import { supabase } from "./lib/supabase";
 
 /* ---------------------------------------------------------
    KrishiSahayak — Landing Page
@@ -116,39 +117,47 @@ function Card({ children, style }) {
   );
 }
 
+/* =========================================================
+   AUTH MODAL
+========================================================= */
+
 function AuthModal({
   open,
   mode,
   setMode,
   onClose,
-  onSubmit,
+  onSuccess,
 }) {
-  const inputStyle = {
-  width: "100%",
-  padding: "12px 14px",
-  borderRadius: 9,
-  border: "1px solid #d8d2c4",
-  background: "#fff",
-  color: COLORS.deep,
-  fontSize: 14,
-  outline: "none",
-  marginBottom: 10,
-  boxSizing: "border-box",
-};
-
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   if (!open) return null;
 
-  const handleSubmit = async () => {
+  const inputStyle = {
+    width: "100%",
+    padding: "11px 13px",
+    borderRadius: 9,
+    border: `1px solid ${COLORS.line}`,
+    background: "#faf7f0",
+    fontSize: 14,
+    marginBottom: 10,
+    fontFamily: "'Inter', Arial, sans-serif",
+    boxSizing: "border-box",
+    outline: "none",
+  };
+
+  const handleAuth = async () => {
     setError("");
 
-    // Basic validation
+    /* -----------------------------
+       VALIDATION
+    ----------------------------- */
+
     if (mode === "signup" && !fullName.trim()) {
       setError("Please enter your full name.");
       return;
@@ -164,7 +173,7 @@ function AuthModal({
       return;
     }
 
-    if (mode === "signup" && password.length < 6) {
+    if (password.length < 6) {
       setError("Password must be at least 6 characters.");
       return;
     }
@@ -172,21 +181,96 @@ function AuthModal({
     try {
       setLoading(true);
 
+      /* =====================================================
+         SIGN UP
+      ===================================================== */
+
       if (mode === "signup") {
-        await signUp({
-          fullName,
-          email,
-          phone,
-          password,
-        });
-      } else {
-        await login(email, password);
+        const { data, error: signUpError } =
+          await supabase.auth.signUp({
+            email: email.trim(),
+            password,
+            options: {
+              data: {
+                full_name: fullName.trim(),
+                phone: phone.trim(),
+              },
+            },
+          });
+
+        if (signUpError) {
+          throw signUpError;
+        }
+
+        if (!data?.user) {
+          throw new Error(
+            "Account could not be created. Please try again."
+          );
+        }
+
+        /*
+         * IMPORTANT:
+         * Signup was successful.
+         * Send the new user to onboarding, NOT dashboard.
+         */
+        onSuccess("signup");
+        return;
       }
 
-      onSubmit();
+      /* =====================================================
+         SIGN IN
+      ===================================================== */
+
+      const { data, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+      if (signInError) {
+        throw signInError;
+      }
+
+      if (!data?.user) {
+        throw new Error(
+          "Unable to sign in. Please check your credentials."
+        );
+      }
+
+      /*
+       * Existing user → Dashboard
+       */
+      onSuccess("signin");
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Something went wrong.");
+      console.error("Authentication error:", err);
+
+      let message = err?.message || "Something went wrong.";
+
+      /*
+       * Make Supabase errors a little more user-friendly.
+       */
+      if (
+        message.toLowerCase().includes("rate limit")
+      ) {
+        message =
+          "Too many email requests. Please wait a while and try again.";
+      }
+
+      if (
+        message.toLowerCase().includes("invalid login credentials")
+      ) {
+        message =
+          "Invalid email or password. Please check your details.";
+      }
+
+      if (
+        message.toLowerCase().includes("user already registered")
+      ) {
+        message =
+          "This email is already registered. Please sign in instead.";
+      }
+
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -197,42 +281,47 @@ function AuthModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,.45)",
+        background: "rgba(12,61,43,.55)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         zIndex: 100,
         padding: 20,
       }}
+      onClick={(e) =>
+        e.target === e.currentTarget && onClose()
+      }
     >
       <div
         style={{
           background: COLORS.paper,
-          borderRadius: 18,
+          borderRadius: 20,
+          padding: 32,
+          maxWidth: 380,
           width: "100%",
-          maxWidth: 420,
-          padding: 28,
           position: "relative",
-          boxShadow: "0 20px 60px rgba(0,0,0,.18)",
+          boxShadow: "0 30px 60px rgba(12,61,43,.3)",
         }}
       >
         {/* Close button */}
+
         <button
           onClick={onClose}
           style={{
             position: "absolute",
-            top: 14,
-            right: 14,
+            top: 16,
+            right: 16,
+            background: "none",
             border: 0,
-            background: "transparent",
             cursor: "pointer",
             color: COLORS.muted,
           }}
         >
-          <X size={20} />
+          <X size={18} />
         </button>
 
         {/* Sign In / Sign Up tabs */}
+
         <div
           style={{
             display: "flex",
@@ -249,6 +338,7 @@ function AuthModal({
             }}
             style={{
               flex: 1,
+              textAlign: "center",
               padding: 9,
               borderRadius: 7,
               fontWeight: 700,
@@ -263,6 +353,10 @@ function AuthModal({
                 mode === "signin"
                   ? COLORS.green
                   : COLORS.muted,
+              boxShadow:
+                mode === "signin"
+                  ? "0 2px 6px rgba(0,0,0,.06)"
+                  : "none",
             }}
           >
             Sign In
@@ -275,6 +369,7 @@ function AuthModal({
             }}
             style={{
               flex: 1,
+              textAlign: "center",
               padding: 9,
               borderRadius: 7,
               fontWeight: 700,
@@ -289,11 +384,19 @@ function AuthModal({
                 mode === "signup"
                   ? COLORS.green
                   : COLORS.muted,
+              boxShadow:
+                mode === "signup"
+                  ? "0 2px 6px rgba(0,0,0,.06)"
+                  : "none",
             }}
           >
             Sign Up
           </button>
         </div>
+
+        {/* =================================================
+            SIGN IN
+        ================================================= */}
 
         {mode === "signin" ? (
           <>
@@ -322,20 +425,26 @@ function AuthModal({
             <input
               style={inputStyle}
               type="email"
-              placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email address"
+              autoComplete="email"
             />
 
             <input
               style={inputStyle}
               type="password"
-              placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete="current-password"
             />
           </>
         ) : (
+          /* =================================================
+             SIGN UP
+          ================================================= */
+
           <>
             <h2
               style={{
@@ -362,60 +471,68 @@ function AuthModal({
             <input
               style={inputStyle}
               type="text"
-              placeholder="Full name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              placeholder="Full name"
+              autoComplete="name"
             />
 
             <input
               style={inputStyle}
               type="email"
-              placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email address"
+              autoComplete="email"
             />
 
             <input
               style={inputStyle}
               type="tel"
-              placeholder="Phone number (optional)"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              placeholder="Phone number"
+              autoComplete="tel"
             />
 
             <input
               style={inputStyle}
               type="password"
-              placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete="new-password"
             />
           </>
         )}
 
-        {/* Error */}
+        {/* ERROR */}
+
         {error && (
-          <p
+          <div
             style={{
-              color: "#b42318",
-              background: "#fff0ee",
+              background: "#fdecec",
+              color: "#c62828",
+              borderRadius: 9,
               padding: "10px 12px",
-              borderRadius: 8,
               fontSize: 13,
-              marginTop: 10,
+              marginBottom: 10,
+              lineHeight: 1.4,
             }}
           >
             {error}
-          </p>
+          </div>
         )}
 
+        {/* SUBMIT */}
+
         <button
-          onClick={handleSubmit}
+          onClick={handleAuth}
           disabled={loading}
           style={{
             width: "100%",
             background: loading
-              ? "#8aa99a"
+              ? "#7da995"
               : COLORS.green,
             color: "white",
             border: 0,
@@ -426,25 +543,27 @@ function AuthModal({
             cursor: loading
               ? "not-allowed"
               : "pointer",
-            marginTop: 12,
+            marginTop: 6,
           }}
         >
           {loading
-            ? "Please wait..."
+            ? mode === "signin"
+              ? "Signing In..."
+              : "Creating Account..."
             : mode === "signin"
-              ? "Sign In"
-              : "Create Account"}
+            ? "Sign In"
+            : "Create Account"}
         </button>
       </div>
     </div>
   );
 }
 
-export default function KrishiSahayakLanding() {
+/* =========================================================
+   LANDING PAGE
+========================================================= */
 
-  /* =====================================================
-     STEP 1 — useNavigate
-     ===================================================== */
+export default function KrishiSahayakLanding() {
   const navigate = useNavigate();
 
   const [authOpen, setAuthOpen] = useState(false);
@@ -456,12 +575,25 @@ export default function KrishiSahayakLanding() {
   };
 
   /* =====================================================
-     STEP 2 + 3 — Navigate to dashboard after Sign In
-     ===================================================== */
-  const handleSubmit = () => {
+     AFTER AUTHENTICATION
+  ===================================================== */
+
+  const handleAuthSuccess = (mode) => {
     setAuthOpen(false);
 
-    navigate("/dashboard");
+    if (mode === "signup") {
+      /*
+       * NEW USER
+       * Go to onboarding first.
+       */
+      navigate("/onboarding");
+    } else {
+      /*
+       * EXISTING USER
+       * Go directly to dashboard.
+       */
+      navigate("/dashboard");
+    }
   };
 
   const h2Style = {
@@ -1073,7 +1205,7 @@ export default function KrishiSahayakLanding() {
         mode={authMode}
         setMode={setAuthMode}
         onClose={() => setAuthOpen(false)}
-        onSubmit={handleSubmit}
+        onSuccess={handleAuthSuccess}
       />
     </div>
   );
