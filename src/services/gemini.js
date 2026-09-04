@@ -1,6 +1,11 @@
-// src/services/gemini.js
-
 import { supabase } from "../lib/supabase";
+
+// =============================================================
+// GEMINI EDGE FUNCTION
+// =============================================================
+
+const ASK_GEMINI_URL =
+  "https://qsnlrzkvirtiaqageadh.supabase.co/functions/v1/ask-gemini";
 
 // =============================================================
 // SUPPORTED LANGUAGES
@@ -52,8 +57,9 @@ async function callGemini(
         error
       );
 
-      // Try to read the actual response returned by
-      // the Edge Function so quota/server errors are clearer.
+      // Try to read the actual response returned
+      // by the Edge Function so quota/server errors
+      // are clearer.
       if (error.context) {
         try {
           const errorBody =
@@ -153,7 +159,9 @@ export async function getDiseaseExplanation(
   preferredLanguage = "en"
 ) {
   const language =
-    getLanguageName(preferredLanguage);
+    getLanguageName(
+      preferredLanguage
+    );
 
   const prompt = `
 You are KrishiSahayak, a friendly farming assistant helping Indian farmers.
@@ -504,7 +512,7 @@ Keep the answer:
 
 Use bullet points when helpful.
 
-If the question is unrelated to farming, politely explain that KrishiSahayak is mainly designed for farming-related questions.
+If the question is not related to farming, politely explain that KrishiSahayak is mainly designed for farming-related questions.
 
 ============================================================
 EXAMPLE OF HOW TO USE DATA
@@ -578,7 +586,9 @@ function identifyRisks(weatherData) {
     ) &&
     rainProbability > 70
   ) {
-    risks.push("heavy_rain");
+    risks.push(
+      "heavy_rain"
+    );
   }
 
   if (
@@ -625,7 +635,9 @@ export async function getActionPlan(
       ? crops
           .map(
             (crop) =>
-              `${crop?.name || "Unknown"} (${Number(crop?.acres) || 0} acres)`
+              `${crop?.name || "Unknown"} (${
+                Number(crop?.acres) || 0
+              } acres)`
           )
           .join(", ")
       : "";
@@ -705,8 +717,14 @@ Keep all text inside the JSON in ${language}.
 
   const cleanedText =
     rawText
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
+      .replace(
+        /```json/gi,
+        ""
+      )
+      .replace(
+        /```/g,
+        ""
+      )
       .trim();
 
   try {
@@ -808,7 +826,11 @@ export async function getMarketRecommendation(
         return `
 Crop: ${crop?.name || "Unknown"}
 Mandi: ${crop?.mandiName || "Unknown"}
-Current price: ₹${Number(crop?.currentPrice) || 0}/quintal
+Current price: ₹${
+          Number(
+            crop?.currentPrice
+          ) || 0
+        }/quintal
 Last 4 weeks: ${
           history.join(", ") ||
           "No history"
@@ -862,8 +884,14 @@ Keep all text inside the JSON in ${language}.
 
   const cleanedText =
     rawText
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
+      .replace(
+        /```json/gi,
+        ""
+      )
+      .replace(
+        /```/g,
+        ""
+      )
       .trim();
 
   try {

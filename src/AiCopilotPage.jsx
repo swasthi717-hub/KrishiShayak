@@ -8,8 +8,8 @@ import {
   Volume2,
   Send,
   Star,
-  Square,
   Loader2,
+  Square,
 } from "lucide-react";
 
 import { useLocation } from "react-router-dom";
@@ -40,132 +40,206 @@ import {
 } from "./services/mandiApi.js";
 
 import { supabase } from "./lib/supabase";
+
 import { useAuth } from "./context/AuthContext";
 
-/* =============================================================
- * QUICK QUESTIONS
- * ============================================================= */
+import { useLanguage } from "./context/LanguageContext";
 
-const QUICK_CHIPS = [
+import { translateTexts } from "./services/translation";
+
+/* =============================================================
+   LANGUAGE NAMES
+   ============================================================= */
+
+const LANGUAGE_NAMES = {
+  en: "English",
+  hi: "हिंदी",
+  mr: "मराठी",
+  ta: "தமிழ்",
+  te: "తెలుగు",
+  kn: "ಕನ್ನಡ",
+  ml: "മലയാളം",
+  gu: "ગુજરાતી",
+  pa: "ਪੰਜਾਬੀ",
+  bn: "বাংলা",
+  or: "ଓଡ଼ିଆ",
+};
+
+const SUPPORTED_LANGUAGES =
+  Object.keys(LANGUAGE_NAMES);
+
+/* =============================================================
+   VOICE LANGUAGE CODES
+   ============================================================= */
+
+const LANGUAGE_VOICE_CODES = {
+  hi: "hi-IN",
+  mr: "mr-IN",
+  ta: "ta-IN",
+  te: "te-IN",
+  kn: "kn-IN",
+  pa: "pa-IN",
+  bn: "bn-IN",
+  or: "or-IN",
+  gu: "gu-IN",
+  ml: "ml-IN",
+  en: "en-IN",
+};
+
+/* =============================================================
+   GEMINI LANGUAGE CODES
+   ============================================================= */
+
+const LANGUAGE_PROMPT_CODES = {
+  hi: "hi",
+  mr: "mr",
+  ta: "ta",
+  te: "te",
+  kn: "kn",
+  pa: "pa",
+  bn: "bn",
+  or: "or",
+  gu: "gu",
+  ml: "ml",
+  en: "en",
+};
+
+/* =============================================================
+   ENGLISH UI TEXTS
+   ============================================================= */
+
+const ENGLISH_TEXTS = {
+  copilotTitle: "AI Farming Copilot",
+
+  copilotSubtitle: "Online · Multilingual",
+
+  voiceLanguage: "Voice language:",
+
+  quickPest: "Pest control",
+
+  quickRain: "Weather advice",
+
+  quickSell: "Sell today?",
+
+  quickIrrigation: "When to irrigate?",
+
+  initialGreeting:
+    "नमस्ते! I'm KrishiShayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
+
+  listen: "Listen",
+
+  thinking: "AI is thinking...",
+
+  inputPlaceholder:
+    "Type or speak in any language...",
+
+  stopVoiceResponse:
+    "Stop voice response",
+
+  sampleQuestions:
+    "Sample Questions",
+
+  questionDisease:
+    "Which disease is affecting my cotton?",
+
+  questionRain:
+    "What should I do after tomorrow's rain?",
+
+  questionTomato:
+    "Is it a good time to sell tomatoes today?",
+
+  questionWheat:
+    "When should I irrigate wheat?",
+
+  questionPesticide:
+    "Which pesticide is suitable for bollworm?",
+
+  questionMandi:
+    "Which is the best mandi for onion today?",
+
+  supportedLanguages:
+    "Supported Languages",
+
+  micPermission:
+    "Microphone permission was denied. Please allow microphone access in your browser.",
+
+  micError:
+    "I couldn't hear that clearly. Please try speaking again.",
+
+  aiError:
+    "Unable to connect to the AI assistant.",
+
+  translating:
+    "Translating...",
+};
+
+/* =============================================================
+   QUICK QUESTIONS
+   ============================================================= */
+
+const QUICK_QUESTIONS = [
   {
-    label: "🌾 गेहूं की बुवाई",
-    question:
-      "गेहूं की बुवाई कब और कैसे करें?",
-    language: "Hindi",
+    key: "quickPest",
+    english: "Pest control",
   },
   {
-    label: "🐛 Bollworm",
-    question:
-      "How can I control bollworm in my crop?",
-    language: "English",
+    key: "quickRain",
+    english: "Weather advice",
   },
   {
-    label: "💧 पानी प्रबंधन",
-    question:
-      "फसल में पानी कब देना चाहिए?",
-    language: "Hindi",
+    key: "quickSell",
+    english: "Sell today?",
   },
   {
-    label: "🌱 Soil health",
-    question:
-      "How can I improve my soil health?",
-    language: "English",
+    key: "quickIrrigation",
+    english: "When to irrigate?",
   },
 ];
 
 /* =============================================================
- * SAMPLE QUESTIONS
- * ============================================================= */
+   SAMPLE QUESTIONS
+   ============================================================= */
 
 const SAMPLE_QUESTIONS = [
   {
-    question:
-      "मेरी फसल में कीड़े लग गए हैं, क्या करूं?",
-    language: "Hindi",
+    key: "questionDisease",
+    english:
+      "Which disease is affecting my cotton?",
   },
   {
-    question:
-      "गेहूं की बुवाई के लिए सबसे अच्छा समय क्या है?",
-    language: "Hindi",
+    key: "questionRain",
+    english:
+      "What should I do after tomorrow's rain?",
   },
   {
-    question:
-      "How can I control bollworm in my crop?",
-    language: "English",
+    key: "questionTomato",
+    english:
+      "Is it a good time to sell tomatoes today?",
   },
   {
-    question:
-      "What fertilizer should I use for rice?",
-    language: "English",
+    key: "questionWheat",
+    english:
+      "When should I irrigate wheat?",
+  },
+  {
+    key: "questionPesticide",
+    english:
+      "Which pesticide is suitable for bollworm?",
+  },
+  {
+    key: "questionMandi",
+    english:
+      "Which is the best mandi for onion today?",
   },
 ];
 
 /* =============================================================
- * LANGUAGES
- * ============================================================= */
-
-const SUPPORTED_LANGUAGES = [
-  "Hindi",
-  "Marathi",
-  "Tamil",
-  "Telugu",
-  "Kannada",
-  "Punjabi",
-  "Bengali",
-  "Odia",
-  "Gujarati",
-  "Malayalam",
-  "English",
-];
-
-const LANGUAGE_CODES = {
-  Hindi: "hi-IN",
-  Marathi: "mr-IN",
-  Tamil: "ta-IN",
-  Telugu: "te-IN",
-  Kannada: "kn-IN",
-  Punjabi: "pa-IN",
-  Bengali: "bn-IN",
-  Odia: "or-IN",
-  Gujarati: "gu-IN",
-  Malayalam: "ml-IN",
-  English: "en-IN",
-};
-
-const LANGUAGE_PROMPT_CODES = {
-  Hindi: "hi",
-  Marathi: "mr",
-  Tamil: "ta",
-  Telugu: "te",
-  Kannada: "kn",
-  Punjabi: "pa",
-  Bengali: "bn",
-  Odia: "or",
-  Gujarati: "gu",
-  Malayalam: "ml",
-  English: "en",
-};
-
-const LANGUAGE_NAMES = {
-  hi: "Hindi",
-  mr: "Marathi",
-  ta: "Tamil",
-  te: "Telugu",
-  kn: "Kannada",
-  pa: "Punjabi",
-  bn: "Bengali",
-  or: "Odia",
-  gu: "Gujarati",
-  ml: "Malayalam",
-  en: "English",
-};
-
-/* =============================================================
- * COMMODITY DETECTION
- * ============================================================= */
+   COMMODITY DETECTION
+   ============================================================= */
 
 function detectCommodity(question) {
-  const text = String(question || "").toLowerCase();
+  const text = String(question || "")
+    .toLowerCase();
 
   const commodities = [
     {
@@ -262,11 +336,12 @@ function detectCommodity(question) {
 }
 
 /* =============================================================
- * CHECK WHETHER QUESTION NEEDS MANDI DATA
- * ============================================================= */
+   CHECK WHETHER QUESTION NEEDS MANDI DATA
+   ============================================================= */
 
 function needsMandiData(question) {
-  const text = String(question || "").toLowerCase();
+  const text = String(question || "")
+    .toLowerCase();
 
   const mandiKeywords = [
     "mandi",
@@ -301,8 +376,8 @@ function needsMandiData(question) {
 }
 
 /* =============================================================
- * FETCH MANDI DATA
- * ============================================================= */
+   FETCH MANDI DATA
+   ============================================================= */
 
 async function fetchRelevantMandiData(
   question,
@@ -326,9 +401,10 @@ async function fetchRelevantMandiData(
     location?.district || "";
 
   try {
-    /*
-     * First try district + state + commodity.
-     */
+    /* ---------------------------------------------------------
+       First try district + state + commodity
+       --------------------------------------------------------- */
+
     let data =
       await getMandiPrices({
         state,
@@ -344,9 +420,10 @@ async function fetchRelevantMandiData(
       return data;
     }
 
-    /*
-     * Second try state + commodity.
-     */
+    /* ---------------------------------------------------------
+       Second try state + commodity
+       --------------------------------------------------------- */
+
     data =
       await getMandiPrices({
         state,
@@ -361,9 +438,10 @@ async function fetchRelevantMandiData(
       return data;
     }
 
-    /*
-     * Third try commodity only.
-     */
+    /* ---------------------------------------------------------
+       Third try commodity only
+       --------------------------------------------------------- */
+
     data =
       await getMandiPrices({
         commodity,
@@ -382,32 +460,31 @@ async function fetchRelevantMandiData(
 }
 
 /* =============================================================
- * COMPONENT
- * ============================================================= */
+   COMPONENT
+   ============================================================= */
 
 export default function AiCopilotPage() {
-  const routerLocation = useLocation();
+  const routerLocation =
+    useLocation();
 
   const { user } = useAuth();
 
-  /* ===========================================================
-   * CHAT STATE
-   * =========================================================== */
-
-  const [messages, setMessages] = useState([
-    {
-      sender: "ai",
-      text:
-        "नमस्ते! I'm KrishiSahayak AI. Ask me anything about your crops, weather, pests, or market prices — in Hindi, Marathi, Tamil, Telugu, or English.",
-      time: "Now",
-    },
-  ]);
-
-  const [input, setInput] = useState("");
+  const { language } =
+    useLanguage();
 
   /* ===========================================================
-   * VOICE STATE
-   * =========================================================== */
+     CHAT STATE
+     =========================================================== */
+
+  const [messages, setMessages] =
+    useState([]);
+
+  const [input, setInput] =
+    useState("");
+
+  /* ===========================================================
+     VOICE STATE
+     =========================================================== */
 
   const [isListening, setIsListening] =
     useState(false);
@@ -419,15 +496,21 @@ export default function AiCopilotPage() {
     useState("");
 
   /* ===========================================================
-   * LANGUAGE
-   * =========================================================== */
+     LANGUAGE STATE
+     =========================================================== */
 
   const [selectedLanguage, setSelectedLanguage] =
-    useState("English");
+    useState(language || "hi");
+
+  const [translations, setTranslations] =
+    useState(ENGLISH_TEXTS);
+
+  const [isTranslating, setIsTranslating] =
+    useState(false);
 
   /* ===========================================================
-   * LIVE FARMER CONTEXT
-   * =========================================================== */
+     FARMER CONTEXT
+     =========================================================== */
 
   const [farmerContext, setFarmerContext] =
     useState({
@@ -440,27 +523,121 @@ export default function AiCopilotPage() {
     useState(true);
 
   /* ===========================================================
-   * LOAD ONBOARDING LOCATION + WEATHER
-   * =========================================================== */
+     INITIAL GREETING
+     =========================================================== */
+
+  useEffect(() => {
+    setMessages([
+      {
+        sender: "ai",
+        text: translations.initialGreeting,
+        time: "Now",
+      },
+    ]);
+  }, [translations.initialGreeting]);
+
+  /* ===========================================================
+     SYNC WITH GLOBAL LANGUAGE
+     =========================================================== */
+
+  useEffect(() => {
+    if (language) {
+      setSelectedLanguage(language);
+    }
+  }, [language]);
+
+  /* ===========================================================
+     TRANSLATE COPILOT UI
+     =========================================================== */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTranslations() {
+      if (
+        !language ||
+        language === "en"
+      ) {
+        setTranslations(ENGLISH_TEXTS);
+        setIsTranslating(false);
+        return;
+      }
+
+      setIsTranslating(true);
+
+      try {
+        const keys =
+          Object.keys(ENGLISH_TEXTS);
+
+        const englishTexts =
+          Object.values(ENGLISH_TEXTS);
+
+        const translated =
+          await translateTexts(
+            englishTexts,
+            language,
+            "en"
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        const translatedObject = {};
+
+        keys.forEach(
+          (key, index) => {
+            translatedObject[key] =
+              translated[index] ||
+              ENGLISH_TEXTS[key];
+          }
+        );
+
+        setTranslations(
+          translatedObject
+        );
+      } catch (error) {
+        console.error(
+          "AI Copilot translation error:",
+          error
+        );
+
+        if (!cancelled) {
+          setTranslations(
+            ENGLISH_TEXTS
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsTranslating(false);
+        }
+      }
+    }
+
+    loadTranslations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
+
+  /* ===========================================================
+     LOAD ONBOARDING LOCATION + WEATHER
+     =========================================================== */
 
   async function loadFarmerContext() {
     try {
       setContextLoading(true);
 
-      /*
-       * User must be logged in.
-       */
       if (!user) {
         throw new Error(
           "You must be logged in."
         );
       }
 
-      /*
-       * -------------------------------------------------------
-       * Get state + district saved during onboarding
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         Get state + district saved during onboarding
+         ------------------------------------------------------- */
 
       const {
         data: profile,
@@ -495,14 +672,12 @@ export default function AiCopilotPage() {
         }
       );
 
-      /*
-       * -------------------------------------------------------
-       * Convert onboarding location into coordinates
-       *
-       * IMPORTANT:
-       * This is NOT live GPS.
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         Convert onboarding location into coordinates
+
+         IMPORTANT:
+         This is NOT live GPS.
+         ------------------------------------------------------- */
 
       const coordinates =
         await getCoordinatesFromLocation(
@@ -515,11 +690,9 @@ export default function AiCopilotPage() {
         coordinates
       );
 
-      /*
-       * -------------------------------------------------------
-       * Get weather for onboarding location
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         Get weather for onboarding location
+         ------------------------------------------------------- */
 
       const weather =
         await getWeather(
@@ -527,11 +700,9 @@ export default function AiCopilotPage() {
           coordinates.longitude
         );
 
-      /*
-       * -------------------------------------------------------
-       * Build farmer context
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         Build farmer context
+         ------------------------------------------------------- */
 
       const context = {
         location: {
@@ -542,6 +713,7 @@ export default function AiCopilotPage() {
             coordinates.longitude,
 
           state,
+
           district,
         },
 
@@ -575,8 +747,8 @@ export default function AiCopilotPage() {
   }
 
   /* ===========================================================
-   * INITIAL CONTEXT LOAD
-   * =========================================================== */
+     INITIAL CONTEXT LOAD
+     =========================================================== */
 
   useEffect(() => {
     if (user) {
@@ -585,8 +757,8 @@ export default function AiCopilotPage() {
   }, [user]);
 
   /* ===========================================================
-   * SEND MESSAGE
-   * =========================================================== */
+     SEND MESSAGE
+     =========================================================== */
 
   async function sendMessage(
     messageOverride = null
@@ -613,12 +785,13 @@ export default function AiCopilotPage() {
       selectedLanguage
     );
 
-    /*
-     * Add user message.
-     */
+    /* ---------------------------------------------------------
+       Add user message
+       --------------------------------------------------------- */
 
     setMessages((prev) => [
       ...prev,
+
       {
         sender: "user",
         text: trimmed,
@@ -630,13 +803,17 @@ export default function AiCopilotPage() {
     setIsThinking(true);
 
     try {
-      /*
-       * -------------------------------------------------------
-       * Ensure onboarding location/weather are available
-       * -------------------------------------------------------
-       */
+      const languageCode =
+        LANGUAGE_PROMPT_CODES[
+          selectedLanguage
+        ] || "en";
 
-      let context = farmerContext;
+      /* -------------------------------------------------------
+         Ensure onboarding location/weather are available
+         ------------------------------------------------------- */
+
+      let context =
+        farmerContext;
 
       if (
         !context?.location ||
@@ -646,11 +823,9 @@ export default function AiCopilotPage() {
           await loadFarmerContext();
       }
 
-      /*
-       * -------------------------------------------------------
-       * If onboarding location could not be loaded
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         If onboarding location could not be loaded
+         ------------------------------------------------------- */
 
       if (!context?.location) {
         throw new Error(
@@ -658,11 +833,9 @@ export default function AiCopilotPage() {
         );
       }
 
-      /*
-       * -------------------------------------------------------
-       * Fetch mandi data only when needed
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         Fetch Mandi data only when needed
+         ------------------------------------------------------- */
 
       const mandiData =
         await fetchRelevantMandiData(
@@ -684,21 +857,14 @@ export default function AiCopilotPage() {
         finalContext
       );
 
-      /*
-       * -------------------------------------------------------
-       * Ask Gemini
-       * -------------------------------------------------------
-       */
-
-      const languageCode =
-        LANGUAGE_PROMPT_CODES[
-          selectedLanguage
-        ] || "en";
-
       console.log(
         "Sending question to Gemini with language:",
         languageCode
       );
+
+      /* -------------------------------------------------------
+         Ask Gemini
+         ------------------------------------------------------- */
 
       const answer =
         await getChatResponse(
@@ -718,14 +884,13 @@ export default function AiCopilotPage() {
         safeAnswer
       );
 
-      /*
-       * -------------------------------------------------------
-       * Add AI response
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         Add AI response
+         ------------------------------------------------------- */
 
       setMessages((prev) => [
         ...prev,
+
         {
           sender: "ai",
           text: safeAnswer,
@@ -733,22 +898,15 @@ export default function AiCopilotPage() {
         },
       ]);
 
-      /*
-       * -------------------------------------------------------
-       * Text-to-speech
-       * -------------------------------------------------------
-       */
+      /* -------------------------------------------------------
+         Text-to-speech
+         ------------------------------------------------------- */
 
       try {
         const speechLanguage =
-          LANGUAGE_CODES[
+          LANGUAGE_VOICE_CODES[
             selectedLanguage
           ] || "en-IN";
-
-        console.log(
-          "Speaking response in:",
-          speechLanguage
-        );
 
         speakResponse(
           safeAnswer,
@@ -766,16 +924,13 @@ export default function AiCopilotPage() {
         error
       );
 
-      let errorMessage =
-        "Sorry, I couldn't process your question right now.";
-
-      if (error?.message) {
-        errorMessage =
-          `AI assistant error: ${error.message}`;
-      }
+      const errorMessage =
+        error?.message ||
+        translations.aiError;
 
       setMessages((prev) => [
         ...prev,
+
         {
           sender: "ai",
           text: errorMessage,
@@ -788,8 +943,8 @@ export default function AiCopilotPage() {
   }
 
   /* ===========================================================
-   * DASHBOARD → COPILOT PROMPT
-   * =========================================================== */
+     DASHBOARD → COPILOT PROMPT
+     =========================================================== */
 
   useEffect(() => {
     const prompt =
@@ -804,10 +959,10 @@ export default function AiCopilotPage() {
       prompt
     );
 
-    /*
-     * Clear navigation state so the same
-     * prompt does not execute again.
-     */
+    /* ---------------------------------------------------------
+       Clear navigation state so the same prompt
+       does not execute again.
+       --------------------------------------------------------- */
 
     window.history.replaceState(
       {},
@@ -817,50 +972,36 @@ export default function AiCopilotPage() {
 
     sendMessage(prompt);
 
-    /*
-     * This effect intentionally responds
-     * to navigation state.
-     */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routerLocation.state?.prompt]);
 
   /* ===========================================================
-   * MICROPHONE
-   * =========================================================== */
+     MICROPHONE
+     =========================================================== */
 
   const handleMicClick = () => {
-    /*
-     * ---------------------------------------------------------
-     * Stop current listening
-     * ---------------------------------------------------------
-     */
+    /* ---------------------------------------------------------
+       Stop current listening
+       --------------------------------------------------------- */
 
     if (isListening) {
-      console.log(
-        "Stopping speech recognition..."
-      );
-
       stopListening();
       setIsListening(false);
       return;
     }
 
-    /*
-     * ---------------------------------------------------------
-     * Clear old voice error
-     * ---------------------------------------------------------
-     */
+    /* ---------------------------------------------------------
+       Clear old voice error
+       --------------------------------------------------------- */
 
     setVoiceError("");
 
-    /*
-     * ---------------------------------------------------------
-     * Select browser language
-     * ---------------------------------------------------------
-     */
+    /* ---------------------------------------------------------
+       Select browser language
+       --------------------------------------------------------- */
 
     const speechLanguage =
-      LANGUAGE_CODES[
+      LANGUAGE_VOICE_CODES[
         selectedLanguage
       ] || "en-IN";
 
@@ -869,37 +1010,17 @@ export default function AiCopilotPage() {
       speechLanguage
     );
 
-    console.log(
-      "Listening in:",
-      selectedLanguage
-    );
-
-    /*
-     * ---------------------------------------------------------
-     * Start recognition
-     * ---------------------------------------------------------
-     */
+    /* ---------------------------------------------------------
+       Start recognition
+       --------------------------------------------------------- */
 
     startListening({
       language: speechLanguage,
 
-      /*
-       * Recognition started
-       */
-
       onStart: () => {
-        console.log(
-          "Speech recognition started:",
-          speechLanguage
-        );
-
         setVoiceError("");
         setIsListening(true);
       },
-
-      /*
-       * Transcript received
-       */
 
       onResult: (spokenText) => {
         const text =
@@ -907,51 +1028,23 @@ export default function AiCopilotPage() {
             ? spokenText.trim()
             : "";
 
-        console.log(
-          "Speech transcript received:",
-          text
-        );
-
         if (!text) {
-          console.warn(
-            "Speech recognition returned an empty transcript."
-          );
-
           return;
         }
 
-        /*
-         * Show transcript in input.
-         */
-
         setInput(text);
 
-        /*
-         * IMPORTANT:
-         *
-         * Send transcript directly rather than
-         * calling sendMessage() with React state,
-         * because state updates are asynchronous.
-         */
+        /* -----------------------------------------------------
+           Send transcript directly because React state updates
+           asynchronously.
+           ----------------------------------------------------- */
 
         sendMessage(text);
       },
 
-      /*
-       * Recognition ended
-       */
-
       onEnd: () => {
-        console.log(
-          "Speech recognition ended."
-        );
-
         setIsListening(false);
       },
-
-      /*
-       * Recognition error
-       */
 
       onError: (errorMessage) => {
         console.error(
@@ -973,7 +1066,7 @@ export default function AiCopilotPage() {
         } else {
           setVoiceError(
             errorMessage ||
-              "Voice input is unavailable. Please try again."
+              translations.micError
           );
         }
       },
@@ -981,8 +1074,8 @@ export default function AiCopilotPage() {
   };
 
   /* ===========================================================
-   * SPEAK INDIVIDUAL AI MESSAGE
-   * =========================================================== */
+     SPEAK INDIVIDUAL AI MESSAGE
+     =========================================================== */
 
   const handleSpeak = (text) => {
     if (!text) {
@@ -991,14 +1084,9 @@ export default function AiCopilotPage() {
 
     try {
       const speechLanguage =
-        LANGUAGE_CODES[
+        LANGUAGE_VOICE_CODES[
           selectedLanguage
         ] || "en-IN";
-
-      console.log(
-        "Speaking selected message in:",
-        speechLanguage
-      );
 
       speakResponse(
         text,
@@ -1013,8 +1101,8 @@ export default function AiCopilotPage() {
   };
 
   /* ===========================================================
-   * LANGUAGE CHANGE
-   * =========================================================== */
+     LANGUAGE CHANGE
+     =========================================================== */
 
   const handleLanguageChange = (
     event
@@ -1022,20 +1110,7 @@ export default function AiCopilotPage() {
     const newLanguage =
       event.target.value;
 
-    console.log(
-      "Changing Copilot language to:",
-      newLanguage
-    );
-
-    /*
-     * Stop current TTS
-     */
-
     stopSpeaking();
-
-    /*
-     * Stop recognition if active
-     */
 
     if (isListening) {
       stopListening();
@@ -1043,12 +1118,15 @@ export default function AiCopilotPage() {
     }
 
     setVoiceError("");
-    setSelectedLanguage(newLanguage);
+
+    setSelectedLanguage(
+      newLanguage
+    );
   };
 
   /* ===========================================================
-   * ENTER KEY
-   * =========================================================== */
+     ENTER KEY
+     =========================================================== */
 
   const handleKeyDown = (event) => {
     if (
@@ -1061,22 +1139,32 @@ export default function AiCopilotPage() {
   };
 
   /* ===========================================================
-   * GET LANGUAGE NAME
-   * =========================================================== */
+     CLEANUP
+     =========================================================== */
 
-  const getLanguageName = (code) => {
-    return (
-      LANGUAGE_NAMES[code] ||
-      code
-    );
-  };
+  useEffect(() => {
+    return () => {
+      stopListening();
+      stopSpeaking();
+
+      if (
+        "speechSynthesis" in window
+      ) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   /* ===========================================================
-   * UI
-   * =========================================================== */
+     UI
+     =========================================================== */
 
   return (
-    <Layout title="AI Copilot">
+    <Layout
+      title={
+        translations.copilotTitle
+      }
+    >
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
 
         {/* ===================================================
@@ -1102,15 +1190,16 @@ export default function AiCopilotPage() {
                 <div>
 
                   <h2 className="font-serif text-xl font-bold text-[#24352a]">
-                    AI Farming Copilot
+                    {translations.copilotTitle}
                   </h2>
 
                   <p className="flex items-center gap-1.5 text-sm text-slate-500">
                     <span className="h-2 w-2 rounded-full bg-green-500" />
-                    AI assistant · Multilingual
+                    {translations.copilotSubtitle}
                   </p>
 
                 </div>
+
               </div>
 
               {/* LANGUAGE SELECTOR */}
@@ -1132,40 +1221,45 @@ export default function AiCopilotPage() {
                   }
                   className="rounded-full border border-[#e5dfd2] bg-white px-3 py-2 text-sm font-medium text-[#24352a] outline-none focus:border-[#2f7357]"
                 >
+
                   {SUPPORTED_LANGUAGES.map(
-                    (language) => (
+                    (code) => (
                       <option
-                        key={language}
-                        value={language}
+                        key={code}
+                        value={code}
                       >
-                        {language}
+                        {LANGUAGE_NAMES[code]}
                       </option>
                     )
                   )}
+
                 </select>
 
               </div>
 
             </div>
 
-            {/* =================================================
-                LOCATION / CONTEXT STATUS
-            ================================================= */}
+            {/* LOCATION / CONTEXT STATUS */}
 
             <div className="mt-3 text-xs text-slate-400">
+
               {contextLoading
                 ? "Loading your onboarding location and live weather..."
                 : farmerContext?.location
                   ? `Using onboarding location: ${
-                      farmerContext.location.district ||
-                      farmerContext.location.state ||
+                      farmerContext.location
+                        .district ||
+                      farmerContext.location
+                        .state ||
                       "your location"
                     }${
-                      farmerContext.location.state
+                      farmerContext.location
+                        .state
                         ? `, ${farmerContext.location.state}`
                         : ""
                     }`
                   : "Onboarding location unavailable"}
+
             </div>
 
           </div>
@@ -1179,7 +1273,6 @@ export default function AiCopilotPage() {
             <span className="font-semibold text-[#59645c]">
               Disclaimer:
             </span>{" "}
-
             AI-generated guidance is for
             informational purposes only.
             Please do not follow
@@ -1196,28 +1289,39 @@ export default function AiCopilotPage() {
           ================================================= */}
 
           <div className="mt-5 flex flex-wrap gap-2">
-            {QUICK_CHIPS.map(
+
+            {QUICK_QUESTIONS.map(
               (chip) => (
                 <button
-                  key={chip.question}
+                  key={chip.key}
                   type="button"
-                  onClick={() => {
-                    setSelectedLanguage(
-                      chip.language
-                    );
-
+                  onClick={() =>
                     sendMessage(
-                      chip.question
-                    );
-                  }}
+                      translations[
+                        chip.key
+                      ] ||
+                        chip.english
+                    )
+                  }
                   disabled={isThinking}
                   className="rounded-full bg-white px-4 py-2 text-sm font-medium text-[#24352a] shadow-sm ring-1 ring-[#e5dfd2] transition hover:bg-[#e7edda] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {chip.label}
+                  {
+                    translations[
+                      chip.key
+                    ] || chip.english
+                  }
                 </button>
               )
             )}
+
           </div>
+
+          {isTranslating && (
+            <p className="mt-2 text-xs text-slate-400">
+              {translations.translating}
+            </p>
+          )}
 
           {/* =================================================
               CHAT CONTAINER
@@ -1225,9 +1329,7 @@ export default function AiCopilotPage() {
 
           <div className="mt-5 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-[#e5dfd2]">
 
-            {/* =================================================
-                MESSAGES
-            ================================================= */}
+            {/* MESSAGES */}
 
             <div className="min-h-[420px] space-y-5 p-4 sm:p-6">
 
@@ -1283,7 +1385,9 @@ export default function AiCopilotPage() {
                                 className="flex items-center gap-1 hover:text-[#1f5b3d]"
                               >
                                 <Volume2 size={12} />
-                                Listen
+                                {
+                                  translations.listen
+                                }
                               </button>
 
                             </div>
@@ -1299,9 +1403,7 @@ export default function AiCopilotPage() {
                 }
               )}
 
-              {/* =================================================
-                  THINKING
-              ================================================= */}
+              {/* THINKING */}
 
               {isThinking && (
 
@@ -1380,7 +1482,9 @@ export default function AiCopilotPage() {
                       )
                     }
                     onKeyDown={handleKeyDown}
-                    placeholder={`Ask KrishiSahayak in ${selectedLanguage}...`}
+                    placeholder={
+                      translations.inputPlaceholder
+                    }
                     rows={2}
                     disabled={isThinking}
                     className="min-h-[52px] flex-1 resize-none rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-100 disabled:bg-gray-50"
@@ -1442,16 +1546,20 @@ export default function AiCopilotPage() {
                   </button>
 
                   {isListening && (
+
                     <span className="text-sm text-red-600">
                       Listening... speak now
                     </span>
+
                   )}
 
                   {!isListening &&
                     !voiceError && (
+
                       <span className="text-xs text-gray-500">
                         Tap Speak and ask your farming question.
                       </span>
+
                     )}
 
                 </div>
@@ -1465,7 +1573,9 @@ export default function AiCopilotPage() {
                   }
                   className="self-start text-sm font-medium text-gray-500 hover:text-gray-700"
                 >
-                  Stop voice response
+                  {
+                    translations.stopVoiceResponse
+                  }
                 </button>
 
               </div>
@@ -1496,36 +1606,36 @@ export default function AiCopilotPage() {
                 fill="#c9a24b"
               />
 
-              Sample Questions
+              {translations.sampleQuestions}
+
             </p>
 
             <div className="mt-3 space-y-2">
 
               {SAMPLE_QUESTIONS.map(
-                (item) => (
-                  <button
-                    key={item.question}
-                    type="button"
-                    onClick={() => {
-                      setSelectedLanguage(
-                        item.language
-                      );
+                (question) => (
 
+                  <button
+                    key={question.key}
+                    type="button"
+                    onClick={() =>
                       sendMessage(
-                        item.question
-                      );
-                    }}
+                        translations[
+                          question.key
+                        ] ||
+                          question.english
+                      )
+                    }
                     disabled={isThinking}
                     className="block w-full rounded-xl bg-[#f7f5ee] px-3 py-2.5 text-left text-sm text-[#24352a] hover:bg-[#e7edda] disabled:opacity-60"
                   >
-
-                    <span className="mb-1 block text-xs font-medium text-[#2f7357]">
-                      {item.language}
-                    </span>
-
-                    {item.question}
-
+                    {
+                      translations[
+                        question.key
+                      ] || question.english
+                    }
                   </button>
+
                 )
               )}
 
@@ -1540,19 +1650,27 @@ export default function AiCopilotPage() {
           <div className="rounded-2xl bg-[#e7edda] p-5">
 
             <p className="font-serif text-base font-bold text-[#24352a]">
-              Supported Languages
+              {
+                translations.supportedLanguages
+              }
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
 
               {SUPPORTED_LANGUAGES.map(
-                (lang) => (
+                (code) => (
+
                   <span
-                    key={lang}
+                    key={code}
                     className="rounded-full bg-white px-3 py-1 text-sm font-medium text-[#24352a] shadow-sm"
                   >
-                    {lang}
+                    {
+                      LANGUAGE_NAMES[
+                        code
+                      ]
+                    }
                   </span>
+
                 )
               )}
 
@@ -1560,11 +1678,11 @@ export default function AiCopilotPage() {
 
             <p className="mt-3 text-xs text-slate-500">
               Current language:{" "}
-              {getLanguageName(
-                LANGUAGE_PROMPT_CODES[
+              {
+                LANGUAGE_NAMES[
                   selectedLanguage
-                ]
-              )}
+                ] || "English"
+              }
             </p>
 
           </div>

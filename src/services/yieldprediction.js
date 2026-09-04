@@ -1,5 +1,3 @@
-// src/services/yieldprediction.js
-
 import * as ort from "onnxruntime-web";
 
 let session = null;
@@ -10,17 +8,27 @@ let loadingPromise = null;
 // MODEL FILES
 // =============================================================
 
-const MODEL_PATH = "/models/yield_model_farmer.onnx";
-const MAPPINGS_PATH = "/models/mappings_farmer.json";
+const MODEL_PATH =
+  "/models/yield_model_farmer.onnx";
+
+const MAPPINGS_PATH =
+  "/models/mappings_farmer.json";
 
 // IndexedDB settings
-const MODEL_DB_NAME = "krishisahayak-model-cache";
+const MODEL_DB_NAME =
+  "krishisahayak-model-cache";
+
 const MODEL_DB_VERSION = 1;
-const MODEL_STORE_NAME = "models";
-const MODEL_CACHE_KEY = "yield_model_farmer_v1";
+
+const MODEL_STORE_NAME =
+  "models";
+
+const MODEL_CACHE_KEY =
+  "yield_model_farmer_v1";
 
 // 1 acre = 0.404686 hectares
-const ACRES_TO_HECTARES = 0.404686;
+const ACRES_TO_HECTARES =
+  0.404686;
 
 // =============================================================
 // ALIASES
@@ -28,8 +36,10 @@ const ACRES_TO_HECTARES = 0.404686;
 
 const cropAliases = {
   Cotton: "Cotton(lint)",
-  "Moong (Green Gram)": "Moong(Green Gram)",
-  "Rapeseed & Mustard": "Rapeseed &Mustard",
+  "Moong (Green Gram)":
+    "Moong(Green Gram)",
+  "Rapeseed & Mustard":
+    "Rapeseed &Mustard",
 };
 
 // =============================================================
@@ -37,76 +47,108 @@ const cropAliases = {
 // =============================================================
 
 function openModelDatabase() {
-  return new Promise((resolve, reject) => {
-    if (!("indexedDB" in window)) {
-      reject(
-        new Error("IndexedDB is not supported by this browser")
-      );
-      return;
-    }
-
-    const request = indexedDB.open(
-      MODEL_DB_NAME,
-      MODEL_DB_VERSION
-    );
-
-    request.onupgradeneeded = () => {
-      const db = request.result;
-
-      if (!db.objectStoreNames.contains(MODEL_STORE_NAME)) {
-        db.createObjectStore(MODEL_STORE_NAME);
+  return new Promise(
+    (resolve, reject) => {
+      if (!("indexedDB" in window)) {
+        reject(
+          new Error(
+            "IndexedDB is not supported by this browser"
+          )
+        );
+        return;
       }
-    };
 
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
+      const request =
+        indexedDB.open(
+          MODEL_DB_NAME,
+          MODEL_DB_VERSION
+        );
 
-    request.onerror = () => {
-      reject(
-        request.error ||
-          new Error("Unable to open IndexedDB")
-      );
-    };
-  });
+      request.onupgradeneeded =
+        () => {
+          const db = request.result;
+
+          if (
+            !db.objectStoreNames.contains(
+              MODEL_STORE_NAME
+            )
+          ) {
+            db.createObjectStore(
+              MODEL_STORE_NAME
+            );
+          }
+        };
+
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+
+      request.onerror = () => {
+        reject(
+          request.error ||
+            new Error(
+              "Unable to open IndexedDB"
+            )
+        );
+      };
+    }
+  );
 }
 
 async function getCachedModel() {
   let db;
 
   try {
-    db = await openModelDatabase();
+    db =
+      await openModelDatabase();
 
-    return await new Promise((resolve, reject) => {
-      const transaction = db.transaction(
-        MODEL_STORE_NAME,
-        "readonly"
-      );
+    return await new Promise(
+      (resolve, reject) => {
+        const transaction =
+          db.transaction(
+            MODEL_STORE_NAME,
+            "readonly"
+          );
 
-      const store =
-        transaction.objectStore(MODEL_STORE_NAME);
+        const store =
+          transaction.objectStore(
+            MODEL_STORE_NAME
+          );
 
-      const request = store.get(MODEL_CACHE_KEY);
+        const request =
+          store.get(
+            MODEL_CACHE_KEY
+          );
 
-      request.onsuccess = () => {
-        resolve(request.result || null);
-      };
+        request.onsuccess =
+          () => {
+            resolve(
+              request.result ||
+                null
+            );
+          };
 
-      request.onerror = () => {
-        reject(
-          request.error ||
-            new Error("Unable to read cached model")
-        );
-      };
+        request.onerror =
+          () => {
+            reject(
+              request.error ||
+                new Error(
+                  "Unable to read cached model"
+                )
+            );
+          };
 
-      transaction.oncomplete = () => {
-        db.close();
-      };
+        transaction.oncomplete =
+          () => {
+            db.close();
+          };
 
-      transaction.onerror = () => {
-        db.close();
-      };
-    });
+        transaction.onerror =
+          () => {
+            db.close();
+          };
+      }
+    );
   } catch (error) {
     console.warn(
       "IndexedDB read failed. Will use network:",
@@ -121,49 +163,67 @@ async function getCachedModel() {
   }
 }
 
-async function cacheModel(modelBuffer) {
+async function cacheModel(
+  modelBuffer
+) {
   let db;
 
   try {
-    db = await openModelDatabase();
+    db =
+      await openModelDatabase();
 
-    await new Promise((resolve, reject) => {
-      const transaction = db.transaction(
-        MODEL_STORE_NAME,
-        "readwrite"
-      );
+    await new Promise(
+      (resolve, reject) => {
+        const transaction =
+          db.transaction(
+            MODEL_STORE_NAME,
+            "readwrite"
+          );
 
-      const store =
-        transaction.objectStore(MODEL_STORE_NAME);
+        const store =
+          transaction.objectStore(
+            MODEL_STORE_NAME
+          );
 
-      const request = store.put(
-        modelBuffer,
-        MODEL_CACHE_KEY
-      );
+        const request =
+          store.put(
+            modelBuffer,
+            MODEL_CACHE_KEY
+          );
 
-      request.onsuccess = () => {
-        resolve();
-      };
+        request.onsuccess =
+          () => {
+            resolve();
+          };
 
-      request.onerror = () => {
-        reject(
-          request.error ||
-            new Error("Unable to cache model")
-        );
-      };
+        request.onerror =
+          () => {
+            reject(
+              request.error ||
+                new Error(
+                  "Unable to cache model"
+                )
+            );
+          };
 
-      transaction.oncomplete = () => {
-        db.close();
-      };
+        transaction.oncomplete =
+          () => {
+            db.close();
+          };
 
-      transaction.onerror = () => {
-        reject(
-          transaction.error ||
-            new Error("IndexedDB transaction failed")
-        );
-        db.close();
-      };
-    });
+        transaction.onerror =
+          () => {
+            reject(
+              transaction.error ||
+                new Error(
+                  "IndexedDB transaction failed"
+                )
+            );
+
+            db.close();
+          };
+      }
+    );
 
     console.log(
       "Yield model cached successfully in IndexedDB"
@@ -189,7 +249,8 @@ async function getModelBytes() {
   // Try IndexedDB first
   // -----------------------------------------------------------
 
-  const cachedModel = await getCachedModel();
+  const cachedModel =
+    await getCachedModel();
 
   if (cachedModel) {
     console.log(
@@ -207,9 +268,13 @@ async function getModelBytes() {
     "Yield model not found in IndexedDB. Downloading model..."
   );
 
-  const response = await fetch(MODEL_PATH, {
-    cache: "force-cache",
-  });
+  const response =
+    await fetch(
+      MODEL_PATH,
+      {
+        cache: "force-cache",
+      }
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -231,7 +296,9 @@ async function getModelBytes() {
   // Save a copy to IndexedDB for future visits
   // -----------------------------------------------------------
 
-  await cacheModel(modelBuffer);
+  await cacheModel(
+    modelBuffer
+  );
 
   return modelBuffer;
 }
@@ -249,117 +316,136 @@ export async function loadYieldModel() {
     return loadingPromise;
   }
 
-  loadingPromise = (async () => {
-    try {
-      console.log(
-        "Loading farmer yield ONNX model..."
-      );
+  loadingPromise =
+    (async () => {
+      try {
+        console.log(
+          "Loading farmer yield ONNX model..."
+        );
 
-      // -------------------------------------------------------
-      // Load model + mappings concurrently
-      // -------------------------------------------------------
+        // -----------------------------------------------------
+        // Load model + mappings concurrently
+        // -----------------------------------------------------
 
-      const [modelBuffer, mappingsResponse] =
-        await Promise.all([
+        const [
+          modelBuffer,
+          mappingsResponse,
+        ] = await Promise.all([
           getModelBytes(),
-          fetch(MAPPINGS_PATH, {
-            cache: "force-cache",
-          }),
+
+          fetch(
+            MAPPINGS_PATH,
+            {
+              cache:
+                "force-cache",
+            }
+          ),
         ]);
 
-      // -------------------------------------------------------
-      // Validate mappings response
-      // -------------------------------------------------------
+        // -----------------------------------------------------
+        // Validate mappings response
+        // -----------------------------------------------------
 
-      if (!mappingsResponse.ok) {
+        if (!mappingsResponse.ok) {
+          throw new Error(
+            `Unable to load mappings_farmer.json (${mappingsResponse.status})`
+          );
+        }
+
+        const loadedMappings =
+          await mappingsResponse.json();
+
+        if (
+          !loadedMappings?.crop_mapping
+        ) {
+          throw new Error(
+            "mappings_farmer.json is missing crop_mapping"
+          );
+        }
+
+        if (
+          !loadedMappings?.season_mapping
+        ) {
+          throw new Error(
+            "mappings_farmer.json is missing season_mapping"
+          );
+        }
+
+        if (
+          !loadedMappings?.state_mapping
+        ) {
+          throw new Error(
+            "mappings_farmer.json is missing state_mapping"
+          );
+        }
+
+        // -----------------------------------------------------
+        // Create ONNX session from cached/downloaded bytes
+        //
+        // IMPORTANT:
+        // Keep WASM only for now.
+        // -----------------------------------------------------
+
+        const loadedSession =
+          await ort.InferenceSession.create(
+            modelBuffer,
+            {
+              executionProviders: [
+                "wasm",
+              ],
+            }
+          );
+
+        // -----------------------------------------------------
+        // Store loaded resources in memory
+        // -----------------------------------------------------
+
+        session =
+          loadedSession;
+
+        mappings =
+          loadedMappings;
+
+        console.log(
+          "Farmer yield model loaded successfully"
+        );
+
+        console.log(
+          "Input names:",
+          session.inputNames
+        );
+
+        console.log(
+          "Output names:",
+          session.outputNames
+        );
+
+        console.log(
+          "Input metadata:",
+          session.inputMetadata
+        );
+
+        return session;
+      } catch (error) {
+        session = null;
+        mappings = null;
+
+        console.error(
+          "Failed to load farmer yield model:",
+          error
+        );
+
         throw new Error(
-          `Unable to load mappings_farmer.json (${mappingsResponse.status})`
+          `Failed to load yield model: ${
+            error instanceof Error
+              ? error.message
+              : error
+          }`
         );
+      } finally {
+        loadingPromise = null;
       }
-
-      const loadedMappings =
-        await mappingsResponse.json();
-
-      if (!loadedMappings?.crop_mapping) {
-        throw new Error(
-          "mappings_farmer.json is missing crop_mapping"
-        );
-      }
-
-      if (!loadedMappings?.season_mapping) {
-        throw new Error(
-          "mappings_farmer.json is missing season_mapping"
-        );
-      }
-
-      if (!loadedMappings?.state_mapping) {
-        throw new Error(
-          "mappings_farmer.json is missing state_mapping"
-        );
-      }
-
-      // -------------------------------------------------------
-      // Create ONNX session from cached/downloaded bytes
-      //
-      // IMPORTANT:
-      // Keep WASM only for now.
-      // -------------------------------------------------------
-
-      const loadedSession =
-        await ort.InferenceSession.create(
-          modelBuffer,
-          {
-            executionProviders: ["wasm"],
-          }
-        );
-
-      // -------------------------------------------------------
-      // Store loaded resources in memory
-      // -------------------------------------------------------
-
-      session = loadedSession;
-      mappings = loadedMappings;
-
-      console.log(
-        "Farmer yield model loaded successfully"
-      );
-
-      console.log(
-        "Input names:",
-        session.inputNames
-      );
-
-      console.log(
-        "Output names:",
-        session.outputNames
-      );
-
-      console.log(
-        "Input metadata:",
-        session.inputMetadata
-      );
-
-      return session;
-    } catch (error) {
-      session = null;
-      mappings = null;
-
-      console.error(
-        "Failed to load farmer yield model:",
-        error
-      );
-
-      throw new Error(
-        `Failed to load yield model: ${
-          error instanceof Error
-            ? error.message
-            : error
-        }`
-      );
-    } finally {
-      loadingPromise = null;
-    }
-  })();
+    })();
 
   return loadingPromise;
 }
@@ -383,21 +469,32 @@ export async function predictYield({
   // Convert UI inputs
   // -----------------------------------------------------------
 
-  const numericAreaAcres = Number(area);
-  const numericRainfall = Number(rainfall);
+  const numericAreaAcres =
+    Number(area);
+
+  const numericRainfall =
+    Number(rainfall);
 
   if (
-    !Number.isFinite(numericAreaAcres) ||
+    !Number.isFinite(
+      numericAreaAcres
+    ) ||
     numericAreaAcres <= 0
   ) {
-    throw new Error("Invalid farm area");
+    throw new Error(
+      "Invalid farm area"
+    );
   }
 
   if (
-    !Number.isFinite(numericRainfall) ||
+    !Number.isFinite(
+      numericRainfall
+    ) ||
     numericRainfall < 0
   ) {
-    throw new Error("Invalid rainfall");
+    throw new Error(
+      "Invalid rainfall"
+    );
   }
 
   // -----------------------------------------------------------
@@ -407,22 +504,37 @@ export async function predictYield({
   // -----------------------------------------------------------
 
   const numericAreaHectares =
-    numericAreaAcres * ACRES_TO_HECTARES;
+    numericAreaAcres *
+    ACRES_TO_HECTARES;
 
   // -----------------------------------------------------------
   // Map categorical values
   // -----------------------------------------------------------
 
-  const cropKey = cropAliases[crop] || crop;
+  const cropKey =
+    cropAliases[crop] ||
+    crop;
 
   const cropEncoded =
-    Number(mappings.crop_mapping?.[cropKey]);
+    Number(
+      mappings.crop_mapping?.[
+        cropKey
+      ]
+    );
 
   const seasonEncoded =
-    Number(mappings.season_mapping?.[season]);
+    Number(
+      mappings.season_mapping?.[
+        season
+      ]
+    );
 
   const stateEncoded =
-    Number(mappings.state_mapping?.[state]);
+    Number(
+      mappings.state_mapping?.[
+        state
+      ]
+    );
 
   // -----------------------------------------------------------
   // Debug information
@@ -434,45 +546,68 @@ export async function predictYield({
       crop,
       season,
       state,
-      areaAcres: numericAreaAcres,
-      areaHectares: numericAreaHectares,
-      rainfall: numericRainfall,
+      areaAcres:
+        numericAreaAcres,
+      areaHectares:
+        numericAreaHectares,
+      rainfall:
+        numericRainfall,
     }
   );
 
-  console.log("Mapped values:", {
-    crop: {
-      original: crop,
-      mapped: cropKey,
-      encoded: cropEncoded,
-    },
-    season: {
-      original: season,
-      encoded: seasonEncoded,
-    },
-    state: {
-      original: state,
-      encoded: stateEncoded,
-    },
-  });
+  console.log(
+    "Mapped values:",
+    {
+      crop: {
+        original: crop,
+        mapped: cropKey,
+        encoded:
+          cropEncoded,
+      },
+
+      season: {
+        original: season,
+        encoded:
+          seasonEncoded,
+      },
+
+      state: {
+        original: state,
+        encoded:
+          stateEncoded,
+      },
+    }
+  );
 
   // -----------------------------------------------------------
   // Validate mappings
   // -----------------------------------------------------------
 
-  if (!Number.isFinite(cropEncoded)) {
+  if (
+    !Number.isFinite(
+      cropEncoded
+    )
+  ) {
     throw new Error(
       `Crop "${crop}" is not present in mappings_farmer.json`
     );
   }
 
-  if (!Number.isFinite(seasonEncoded)) {
+  if (
+    !Number.isFinite(
+      seasonEncoded
+    )
+  ) {
     throw new Error(
       `Season "${season}" is not present in mappings_farmer.json`
     );
   }
 
-  if (!Number.isFinite(stateEncoded)) {
+  if (
+    !Number.isFinite(
+      stateEncoded
+    )
+  ) {
     throw new Error(
       `State "${state}" is not present in mappings_farmer.json`
     );
@@ -492,33 +627,43 @@ export async function predictYield({
   // Area MUST be hectares.
   // -----------------------------------------------------------
 
-  const inputArray = new Float32Array([
-    cropEncoded,
-    seasonEncoded,
-    stateEncoded,
-    numericAreaHectares,
-    numericRainfall,
-  ]);
+  const inputArray =
+    new Float32Array([
+      cropEncoded,
+      seasonEncoded,
+      stateEncoded,
+      numericAreaHectares,
+      numericRainfall,
+    ]);
 
   console.log(
     "Farmer ONNX input array:",
-    Array.from(inputArray)
+    Array.from(
+      inputArray
+    )
   );
 
-  const inputTensor = new ort.Tensor(
-    "float32",
-    inputArray,
-    [1, 5]
-  );
+  const inputTensor =
+    new ort.Tensor(
+      "float32",
+      inputArray,
+      [1, 5]
+    );
 
   // -----------------------------------------------------------
   // Get model input/output names
   // -----------------------------------------------------------
 
-  const inputName = session.inputNames[0];
-  const outputName = session.outputNames[0];
+  const inputName =
+    session.inputNames[0];
 
-  if (!inputName || !outputName) {
+  const outputName =
+    session.outputNames[0];
+
+  if (
+    !inputName ||
+    !outputName
+  ) {
     throw new Error(
       "Yield model does not expose expected input/output tensors"
     );
@@ -528,13 +673,18 @@ export async function predictYield({
   // Run model
   // -----------------------------------------------------------
 
-  const results = await session.run({
-    [inputName]: inputTensor,
-  });
+  const results =
+    await session.run({
+      [inputName]:
+        inputTensor,
+    });
 
-  const output = results[outputName];
+  const output =
+    results[outputName];
 
-  if (!output?.data?.length) {
+  if (
+    !output?.data?.length
+  ) {
     throw new Error(
       "Yield model returned no prediction"
     );
@@ -545,19 +695,29 @@ export async function predictYield({
   // -----------------------------------------------------------
 
   const predictionLog =
-    Number(output.data[0]);
+    Number(
+      output.data[0]
+    );
 
-  if (!Number.isFinite(predictionLog)) {
+  if (
+    !Number.isFinite(
+      predictionLog
+    )
+  ) {
     throw new Error(
       "Yield model returned an invalid prediction"
     );
   }
 
   const predictedYield =
-    Math.expm1(predictionLog);
+    Math.expm1(
+      predictionLog
+    );
 
   if (
-    !Number.isFinite(predictedYield) ||
+    !Number.isFinite(
+      predictedYield
+    ) ||
     predictedYield < 0
   ) {
     throw new Error(
@@ -579,36 +739,52 @@ export async function predictYield({
 }
 
 // =============================================================
-// PROFIT
+// PROFIT ESTIMATION
 // =============================================================
 
 export function estimateProfit(
   predictedYield,
-  marketPricePerQuintal,
-  areaInAcres = 1,
+  marketPricePerQuintal = 1900,
+  areaInAcres = 4.2,
   costPerAcre = 15000
 ) {
-  const yieldValue = Number(predictedYield);
-  const price = Number(
-    marketPricePerQuintal
-  );
-  const area = Number(areaInAcres);
-  const cost = Number(costPerAcre);
+  const yieldValue =
+    Number(
+      predictedYield
+    );
 
-  if (!Number.isFinite(yieldValue)) {
-    throw new Error("Invalid predicted yield");
-  }
+  const price =
+    Number(
+      marketPricePerQuintal
+    );
 
-  if (!Number.isFinite(price)) {
-    throw new Error("Invalid market price");
-  }
+  const area =
+    Number(
+      areaInAcres
+    );
 
-  if (!Number.isFinite(area)) {
-    throw new Error("Invalid farm area");
-  }
+  const cost =
+    Number(
+      costPerAcre
+    );
 
-  if (!Number.isFinite(cost)) {
-    throw new Error("Invalid cost per acre");
+  if (
+    !Number.isFinite(
+      yieldValue
+    ) ||
+    !Number.isFinite(
+      price
+    ) ||
+    !Number.isFinite(
+      area
+    ) ||
+    !Number.isFinite(
+      cost
+    )
+  ) {
+    throw new Error(
+      "Invalid values supplied for profit calculation"
+    );
   }
 
   /*
@@ -625,22 +801,37 @@ export function estimateProfit(
     cost * area;
 
   const profit =
-    revenue - totalCost;
+    revenue -
+    totalCost;
 
   console.log(
     "Profit calculation:",
     {
-      predictedYield: yieldValue,
-      marketPricePerQuintal: price,
-      areaInAcres: area,
-      costPerAcre: cost,
+      predictedYield:
+        yieldValue,
+
+      marketPricePerQuintal:
+        price,
+
+      areaInAcres:
+        area,
+
+      costPerAcre:
+        cost,
+
       revenue,
+
       totalCost,
+
       profit,
     }
   );
 
-  if (!Number.isFinite(profit)) {
+  if (
+    !Number.isFinite(
+      profit
+    )
+  ) {
     throw new Error(
       "Profit calculation produced an invalid number"
     );
@@ -654,12 +845,14 @@ export function estimateProfit(
 // =============================================================
 
 export async function getYieldFactors() {
-  const response = await fetch(
-    "/models/yield_factors.json",
-    {
-      cache: "force-cache",
-    }
-  );
+  const response =
+    await fetch(
+      "/models/yield_factors.json",
+      {
+        cache:
+          "force-cache",
+      }
+    );
 
   if (!response.ok) {
     throw new Error(

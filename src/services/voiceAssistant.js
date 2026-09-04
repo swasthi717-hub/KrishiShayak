@@ -204,7 +204,9 @@ export function startListening({
       "Speech recognition ended."
     );
 
-    if (recognition === currentRecognition) {
+    if (
+      recognition === currentRecognition
+    ) {
       recognition = null;
     }
 
@@ -224,7 +226,9 @@ export function startListening({
       error
     );
 
-    if (recognition === currentRecognition) {
+    if (
+      recognition === currentRecognition
+    ) {
       recognition = null;
     }
 
@@ -263,10 +267,15 @@ export function speakResponse(
   text,
   language = "en-IN"
 ) {
+  if (!text) {
+    return;
+  }
+
   if (!("speechSynthesis" in window)) {
     console.warn(
       "Speech synthesis is not supported in this browser."
     );
+
     return;
   }
 
@@ -277,6 +286,7 @@ export function speakResponse(
     console.warn(
       "No text provided for speech."
     );
+
     return;
   }
 

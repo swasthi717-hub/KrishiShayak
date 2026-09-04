@@ -1,12 +1,12 @@
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import ResetPassword from "./ResetPassword";
 import LandingPage from "./KrishiSahayakLanding.jsx";
-import KrishiShayakDashboard from "./KrishiShayakDashboard.jsx";
+import OnboardingPage from "./OnboardingPage.jsx";
+import KrishiSahayakDashboard from "./KrishiSahayakDashboard.jsx";
 import AiCopilotPage from "./AiCopilotPage.jsx";
 import WeatherPage from "./WeatherPage.jsx";
 import CropScannerPage from "./CropScannerPage.jsx";
@@ -14,21 +14,28 @@ import MandiMarketPage from "./MandiMarketPage.jsx";
 import FarmDashboard from "./FarmDashboard.jsx";
 import SmartAlertsPage from "./SmartAlertsPage.jsx";
 import ProfilePage from "./ProfilePage.jsx";
-import OnboardingPage from "./OnboardingPage.jsx";
 
+// FIX: removed the duplicate <AuthProvider> that was wrapping routes here
+// — main.jsx already wraps <App /> in one AuthProvider, so this was a
+// redundant nested provider (harmless, but two auth listeners doing the
+// same job).
+//
+// FIX: also removed the FCMRegistration component that lived here — it
+// duplicated exactly what Layout.jsx's useEffect already does
+// (requestAndSaveFCMToken + listenForForegroundMessages), except this
+// version used a raw native Notification() popup instead of the
+// ForegroundAlertToast UI. Having both mounted meant a single foreground
+// push likely fired twice. Layout.jsx's version is kept since it has the
+// nicer toast and already covers every page (Layout wraps all routes).
 export default function App() {
   return (
     <BrowserRouter>
-    <AuthProvider>
       <Routes>
 
         {/* Landing Page */}
-        <Route
-          path="/"
-          element={<LandingPage />}
-        />
+        <Route path="/" element={<LandingPage />} />
 
-        {/*Onboarding Page*/}
+        {/* Onboarding Page */}
         <Route
           path="/onboarding"
           element={
@@ -43,7 +50,7 @@ export default function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <KrishiShayakDashboard />
+              <KrishiSahayakDashboard />
             </ProtectedRoute>
           }
         />
@@ -88,7 +95,6 @@ export default function App() {
           }
         />
 
-
         {/* Farm Dashboard */}
         <Route
           path="/farm-dashboard"
@@ -109,7 +115,6 @@ export default function App() {
           }
         />
 
-
         {/* Profile */}
         <Route
           path="/profile"
@@ -120,15 +125,13 @@ export default function App() {
           }
         />
 
-        
-        {/*Reset Password*/}
-        <Route 
-        path="/reset-password" 
-        element={<ResetPassword />} 
+        {/* Reset Password */}
+        <Route
+          path="/reset-password"
+          element={<ResetPassword />}
         />
 
       </Routes>
-      </AuthProvider>
     </BrowserRouter>
   );
-};
+}

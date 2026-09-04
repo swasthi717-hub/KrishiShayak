@@ -18,6 +18,10 @@ import { supabase } from "./lib/supabase";
 
 import { useAuth } from "./context/AuthContext";
 
+import { useLanguage } from "./context/LanguageContext";
+
+import { translateTexts } from "./services/translation";
+
 import {
   loadYieldModel,
   predictYield,
@@ -25,16 +29,83 @@ import {
   getYieldFactors,
 } from "./services/yieldprediction.js";
 
-// =============================================================
-// HARDCODED DEMO VALUES
-// These stay hardcoded as requested.
-// =============================================================
+/* =============================================================
+   TRANSLATABLE UI TEXT
+   ============================================================= */
+
+const UI_TEXT = [
+  "Farm Analytics Dashboard",
+  "Acres",
+  "Nashik",
+  "Estimated Yield",
+  "Total farm production",
+  "Expected Profit",
+  "Farm Health Score",
+  "Good condition",
+  "Low",
+  "Yield Risk",
+  "No major threats",
+  "Yield History (Quintals)",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+  "Jan",
+  "Key Yield Factors",
+  "Soil Moisture",
+  "Farm Area",
+  "Pest Control",
+  "Weather Impact",
+  "What-If Simulator",
+  "Predictive AI",
+  "Rainfall",
+  "Predicted Results",
+  "Ask AI to Optimize",
+  "Opens AI Copilot with your current simulation",
+  "Preparing yield prediction model...",
+  "Preparing the AI model for prediction. This may take a few moments the first time.",
+  "Calculating...",
+  "Loading...",
+  "Loading farm profile...",
+  "Area not set",
+  "State not set",
+  "Model Details",
+  "Live simulation values",
+  "Prediction details will appear after the model runs.",
+  "Model prediction",
+  "Total production",
+  "Market price",
+  "Revenue",
+  "Total cost",
+  "Profit",
+];
+
+/* =============================================================
+   TRANSLATION MAP
+   ============================================================= */
+
+function createTranslationMap(translatedTexts) {
+  const map = {};
+
+  UI_TEXT.forEach((text, index) => {
+    map[text] =
+      translatedTexts[index] || text;
+  });
+
+  return map;
+}
+
+/* =============================================================
+   HARDCODED DEMO VALUES
+   These remain hardcoded as requested.
+   ============================================================= */
 
 const FARM = {
   season: "Kharif",
   pesticide: 50,
 
-  // Temporary demo value until Mandi API is connected.
+  // Temporary demo market price.
   marketPricePerQuintal: 1200,
 
   // Temporary demo cultivation cost.
@@ -45,14 +116,17 @@ const FARM = {
 const ACRES_TO_HECTARES = 0.404686;
 const TONNES_TO_QUINTALS = 10;
 
-// =============================================================
-// AREA CONVERSION
-// =============================================================
+/* =============================================================
+   AREA CONVERSION
+   ============================================================= */
 
 function convertAreaToAcres(area, unit) {
   const numericArea = Number(area);
 
-  if (!Number.isFinite(numericArea) || numericArea <= 0) {
+  if (
+    !Number.isFinite(numericArea) ||
+    numericArea <= 0
+  ) {
     return null;
   }
 
@@ -71,8 +145,8 @@ function convertAreaToAcres(area, unit) {
       return numericArea * 0.025;
 
     case "bigha":
-      // Bigha varies by region, so do not silently invent
-      // a universal conversion.
+      // Bigha varies by region, so do not silently
+      // invent a universal conversion.
       return null;
 
     default:
@@ -80,72 +154,172 @@ function convertAreaToAcres(area, unit) {
   }
 }
 
-// =============================================================
-// PAGE
-// =============================================================
+/* =============================================================
+   PAGE
+   ============================================================= */
 
 export default function FarmDashboardPage() {
   const navigate = useNavigate();
 
   const { user } = useAuth();
 
-  // =========================================================
-  // DYNAMIC FARMER DATA FROM ONBOARDING
-  // =========================================================
+  const { language } = useLanguage();
 
-  const [farmerName, setFarmerName] = useState("");
-  const [farmerCrop, setFarmerCrop] = useState("");
-  const [farmerState, setFarmerState] = useState("");
-  const [farmerDistrict, setFarmerDistrict] = useState("");
+  /* ===========================================================
+     TRANSLATION
+     =========================================================== */
 
-  const [farmArea, setFarmArea] = useState(null);
+  const [translations, setTranslations] =
+    useState({});
 
-  const [farmerDataLoading, setFarmerDataLoading] =
-    useState(true);
+  useEffect(() => {
+    let cancelled = false;
 
-  const [farmerDataError, setFarmerDataError] =
+    async function loadTranslations() {
+      try {
+        if (
+          !language ||
+          language === "en"
+        ) {
+          const englishMap = {};
+
+          UI_TEXT.forEach((text) => {
+            englishMap[text] = text;
+          });
+
+          if (!cancelled) {
+            setTranslations(
+              englishMap
+            );
+          }
+
+          return;
+        }
+
+        const translated =
+          await translateTexts(
+            UI_TEXT,
+            language,
+            "en"
+          );
+
+        if (!cancelled) {
+          setTranslations(
+            createTranslationMap(
+              translated
+            )
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Farm Dashboard translation failed:",
+          error
+        );
+
+        const fallback = {};
+
+        UI_TEXT.forEach((text) => {
+          fallback[text] = text;
+        });
+
+        if (!cancelled) {
+          setTranslations(fallback);
+        }
+      }
+    }
+
+    loadTranslations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
+
+  const t = (text) =>
+    translations[text] || text;
+
+  /* ===========================================================
+     DYNAMIC FARMER DATA FROM ONBOARDING
+     =========================================================== */
+
+  const [farmerName, setFarmerName] =
     useState("");
 
-  // =========================================================
-  // WHAT-IF INPUTS
-  // =========================================================
+  const [farmerCrop, setFarmerCrop] =
+    useState("");
 
-  const [rainfall, setRainfall] = useState(50);
+  const [farmerState, setFarmerState] =
+    useState("");
 
-  // =========================================================
-  // MODEL STATE
-  // =========================================================
+  const [farmerDistrict, setFarmerDistrict] =
+    useState("");
 
-  const [modelReady, setModelReady] = useState(false);
+  const [farmArea, setFarmArea] =
+    useState(null);
+
+  const [
+    farmerDataLoading,
+    setFarmerDataLoading,
+  ] = useState(true);
+
+  const [
+    farmerDataError,
+    setFarmerDataError,
+  ] = useState("");
+
+  /* ===========================================================
+     WHAT-IF INPUTS
+     =========================================================== */
+
+  const [rainfall, setRainfall] =
+    useState(50);
+
+  /* ===========================================================
+     MODEL STATE
+     =========================================================== */
+
+  const [modelReady, setModelReady] =
+    useState(false);
 
   const [modelLoading, setModelLoading] =
     useState(true);
 
-  const [predictionLoading, setPredictionLoading] =
-    useState(false);
+  const [
+    predictionLoading,
+    setPredictionLoading,
+  ] = useState(false);
 
-  const [modelError, setModelError] = useState("");
+  const [modelError, setModelError] =
+    useState("");
 
-  const [predictedYield, setPredictedYield] =
-    useState(null);
+  const [
+    predictedYield,
+    setPredictedYield,
+  ] = useState(null);
 
-  const [predictedProfit, setPredictedProfit] =
-    useState(null);
+  const [
+    predictedProfit,
+    setPredictedProfit,
+  ] = useState(null);
 
-  const [yieldFactors, setYieldFactors] =
-    useState(null);
+  const [
+    yieldFactors,
+    setYieldFactors,
+  ] = useState(null);
 
-  // Model details shown below the simulator.
-  const [predictionDebug, setPredictionDebug] =
-    useState(null);
+  const [
+    predictionDebug,
+    setPredictionDebug,
+  ] = useState(null);
 
-  // Prevents an older async prediction from overwriting
-  // a newer slider prediction.
-  const predictionRequestId = useRef(0);
+  // Prevents an older async prediction from
+  // overwriting a newer slider prediction.
+  const predictionRequestId =
+    useRef(0);
 
-  // =========================================================
-  // LOAD FARMER PROFILE / FARM / CROP
-  // =========================================================
+  /* ===========================================================
+     LOAD FARMER PROFILE / FARM / CROP
+     =========================================================== */
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +328,7 @@ export default function FarmDashboardPage() {
       if (!user?.id) {
         if (!cancelled) {
           setFarmerDataLoading(false);
+
           setFarmerDataError(
             "You must be logged in to view your farm dashboard."
           );
@@ -166,28 +341,35 @@ export default function FarmDashboardPage() {
         setFarmerDataLoading(true);
         setFarmerDataError("");
 
-        // -----------------------------------------------------
-        // 1. PROFILE
-        // Name + state + district
-        // -----------------------------------------------------
+        /* -----------------------------------------------------
+           1. PROFILE
+
+           Name + state + district
+           ----------------------------------------------------- */
 
         const {
           data: profile,
           error: profileError,
         } = await supabase
           .from("profiles")
-          .select("name, state, district")
-          .eq("user_id", user.id)
+          .select(
+            "name, state, district"
+          )
+          .eq(
+            "user_id",
+            user.id
+          )
           .single();
 
         if (profileError) {
           throw profileError;
         }
 
-        // -----------------------------------------------------
-        // 2. FARM
-        // Area + area unit
-        // -----------------------------------------------------
+        /* -----------------------------------------------------
+           2. FARM
+
+           Area + area unit
+           ----------------------------------------------------- */
 
         const {
           data: farm,
@@ -197,10 +379,16 @@ export default function FarmDashboardPage() {
           .select(
             "id, area, area_unit, state, district"
           )
-          .eq("user_id", user.id)
-          .order("created_at", {
-            ascending: true,
-          })
+          .eq(
+            "user_id",
+            user.id
+          )
+          .order(
+            "created_at",
+            {
+              ascending: true,
+            }
+          )
           .limit(1)
           .maybeSingle();
 
@@ -214,21 +402,30 @@ export default function FarmDashboardPage() {
           );
         }
 
-        // -----------------------------------------------------
-        // 3. CROPS
-        // Main crop
-        // -----------------------------------------------------
+        /* -----------------------------------------------------
+           3. CROPS
+
+           Main crop
+           ----------------------------------------------------- */
 
         const {
           data: crops,
           error: cropsError,
         } = await supabase
           .from("crops")
-          .select("crop_name, acreage")
-          .eq("farm_id", farm.id)
-          .order("created_at", {
-            ascending: true,
-          });
+          .select(
+            "crop_name, acreage"
+          )
+          .eq(
+            "farm_id",
+            farm.id
+          )
+          .order(
+            "created_at",
+            {
+              ascending: true,
+            }
+          );
 
         if (cropsError) {
           throw cropsError;
@@ -238,7 +435,9 @@ export default function FarmDashboardPage() {
           crops?.find(
             (item) =>
               item?.crop_name &&
-              String(item.crop_name).trim()
+              String(
+                item.crop_name
+              ).trim()
           ) || null;
 
         if (!mainCrop) {
@@ -247,19 +446,25 @@ export default function FarmDashboardPage() {
           );
         }
 
-        // -----------------------------------------------------
-        // 4. AREA CONVERSION
-        // Dashboard simulator/model works in acres.
-        // -----------------------------------------------------
+        /* -----------------------------------------------------
+           4. CONVERT AREA TO ACRES
 
-        const areaInAcres = convertAreaToAcres(
-          farm.area,
-          farm.area_unit
-        );
+           Dashboard/model uses acres.
+           ----------------------------------------------------- */
 
-        if (!Number.isFinite(areaInAcres)) {
+        const areaInAcres =
+          convertAreaToAcres(
+            farm.area,
+            farm.area_unit
+          );
+
+        if (
+          !Number.isFinite(
+            areaInAcres
+          )
+        ) {
           throw new Error(
-            `The farm area unit "${farm.area_unit}" cannot be converted to acres automatically. Please use acres, hectares, guntha, or sq. m.`
+            `The farm area unit "${farm.area_unit}" cannot be converted to acres automatically.`
           );
         }
 
@@ -268,14 +473,19 @@ export default function FarmDashboardPage() {
         }
 
         setFarmerName(
-          String(profile?.name || user.user_metadata?.name || "").trim()
+          String(
+            profile?.name ||
+              user.user_metadata?.name ||
+              ""
+          ).trim()
         );
 
         setFarmerCrop(
-          String(mainCrop.crop_name).trim()
+          String(
+            mainCrop.crop_name
+          ).trim()
         );
 
-        // Prefer profile state, otherwise farm state.
         setFarmerState(
           String(
             profile?.state ||
@@ -292,8 +502,9 @@ export default function FarmDashboardPage() {
           ).trim()
         );
 
-        setFarmArea(areaInAcres);
-
+        setFarmArea(
+          areaInAcres
+        );
       } catch (error) {
         console.error(
           "Failed to load farmer dashboard data:",
@@ -314,7 +525,9 @@ export default function FarmDashboardPage() {
         }
       } finally {
         if (!cancelled) {
-          setFarmerDataLoading(false);
+          setFarmerDataLoading(
+            false
+          );
         }
       }
     }
@@ -326,9 +539,9 @@ export default function FarmDashboardPage() {
     };
   }, [user]);
 
-  // =========================================================
-  // LOAD MODEL
-  // =========================================================
+  /* ===========================================================
+     LOAD YIELD MODEL + FACTORS
+     =========================================================== */
 
   useEffect(() => {
     let cancelled = false;
@@ -347,10 +560,13 @@ export default function FarmDashboardPage() {
         setModelReady(true);
 
         try {
-          const factors = await getYieldFactors();
+          const factors =
+            await getYieldFactors();
 
           if (!cancelled) {
-            setYieldFactors(factors);
+            setYieldFactors(
+              factors
+            );
           }
         } catch (error) {
           console.warn(
@@ -369,6 +585,8 @@ export default function FarmDashboardPage() {
             error?.message ||
               "Unable to load the yield prediction model."
           );
+
+          setModelReady(false);
         }
       } finally {
         if (!cancelled) {
@@ -384,9 +602,9 @@ export default function FarmDashboardPage() {
     };
   }, []);
 
-  // =========================================================
-  // RUN PREDICTION
-  // =========================================================
+  /* ===========================================================
+     RUN YIELD PREDICTION
+     =========================================================== */
 
   useEffect(() => {
     if (!modelReady) {
@@ -401,7 +619,11 @@ export default function FarmDashboardPage() {
       return;
     }
 
-    if (!Number.isFinite(Number(farmArea))) {
+    if (
+      !Number.isFinite(
+        Number(farmArea)
+      )
+    ) {
       return;
     }
 
@@ -415,58 +637,86 @@ export default function FarmDashboardPage() {
       setModelError("");
 
       try {
-        const result = await predictYield({
-          crop: farmerCrop,
-          season: FARM.season,
-          state: farmerState,
-          area: farmArea,
-          rainfall,
-        });
+        const result =
+          await predictYield({
+            crop: farmerCrop,
+            season: FARM.season,
+            state: farmerState,
+            area: farmArea,
+            rainfall,
+          });
 
-        const numericYield = Number(result);
+        const yieldValue =
+          typeof result === "number"
+            ? result
+            : Number(
+                result?.predictedYield ??
+                  result?.yield ??
+                  result?.prediction ??
+                  NaN
+              );
 
-        if (!Number.isFinite(numericYield)) {
+        if (
+          !Number.isFinite(
+            yieldValue
+          )
+        ) {
           throw new Error(
-            "Yield model returned an invalid number."
+            "Yield prediction returned an invalid number."
           );
         }
 
-        // =====================================================
-        // MODEL OUTPUT CONVERSION
-        //
-        // Model output = tonnes/hectare
-        //
-        // Acres -> hectares
-        // tonnes/hectare -> total tonnes
-        // total tonnes -> quintals
-        // =====================================================
+        /* -----------------------------------------------------
+           MODEL OUTPUT CONVERSION
+
+           Model output:
+           tonnes/hectare
+           ----------------------------------------------------- */
 
         const areaHectares =
-          farmArea * ACRES_TO_HECTARES;
+          farmArea *
+          ACRES_TO_HECTARES;
 
         const totalProductionQuintals =
-          numericYield *
+          yieldValue *
           areaHectares *
           TONNES_TO_QUINTALS;
 
-        // =====================================================
-        // PROFIT
-        //
-        // Revenue = total quintals × market price
-        // Cost = cost per acre × farm area
-        // Profit = revenue − total cost
-        // =====================================================
+        /* -----------------------------------------------------
+           PROFIT
 
-        const profit = estimateProfit(
-          totalProductionQuintals,
-          FARM.marketPricePerQuintal,
-          farmArea,
-          FARM.costPerAcre
-        );
+           Revenue =
+           total quintals × market price
+
+           Cost =
+           cost per acre × farm area
+
+           Profit =
+           revenue − cost
+           ----------------------------------------------------- */
+
+        const profitValue =
+          estimateProfit(
+            totalProductionQuintals,
+            FARM.marketPricePerQuintal,
+            farmArea,
+            FARM.costPerAcre
+          );
+
+        if (
+          !Number.isFinite(
+            Number(profitValue)
+          )
+        ) {
+          throw new Error(
+            "Profit calculation returned an invalid number."
+          );
+        }
 
         if (
           cancelled ||
-          requestId !== predictionRequestId.current
+          requestId !==
+            predictionRequestId.current
         ) {
           return;
         }
@@ -476,24 +726,34 @@ export default function FarmDashboardPage() {
           FARM.marketPricePerQuintal;
 
         const totalCost =
-          FARM.costPerAcre * farmArea;
+          FARM.costPerAcre *
+          farmArea;
 
-        setPredictedYield(numericYield);
-        setPredictedProfit(profit);
+        setPredictedYield(
+          yieldValue
+        );
+
+        setPredictedProfit(
+          Number(profitValue)
+        );
 
         setPredictionDebug({
           run: requestId,
           rainfall,
           farmArea,
           areaHectares,
-          modelPrediction: numericYield,
+          modelPrediction:
+            yieldValue,
           totalProductionQuintals,
           marketPrice:
             FARM.marketPricePerQuintal,
           revenue,
           totalCost,
-          profit,
-          status: "Prediction completed",
+          profit: Number(
+            profitValue
+          ),
+          status:
+            "Prediction completed",
         });
       } catch (error) {
         console.error(
@@ -503,7 +763,8 @@ export default function FarmDashboardPage() {
 
         if (
           cancelled ||
-          requestId !== predictionRequestId.current
+          requestId !==
+            predictionRequestId.current
         ) {
           return;
         }
@@ -515,7 +776,8 @@ export default function FarmDashboardPage() {
           run: requestId,
           rainfall,
           farmArea,
-          status: "Prediction failed",
+          status:
+            "Prediction failed",
           error:
             error?.message ||
             "Unknown prediction error",
@@ -528,9 +790,12 @@ export default function FarmDashboardPage() {
       } finally {
         if (
           !cancelled &&
-          requestId === predictionRequestId.current
+          requestId ===
+            predictionRequestId.current
         ) {
-          setPredictionLoading(false);
+          setPredictionLoading(
+            false
+          );
         }
       }
     }
@@ -549,9 +814,9 @@ export default function FarmDashboardPage() {
     farmArea,
   ]);
 
-  // =========================================================
-  // ASK AI → OPEN COPILOT
-  // =========================================================
+  /* ===========================================================
+     ASK AI → OPEN COPILOT
+     =========================================================== */
 
   function handleAskAI() {
     if (
@@ -563,20 +828,27 @@ export default function FarmDashboardPage() {
     }
 
     if (
-      !Number.isFinite(Number(farmArea))
+      !Number.isFinite(
+        Number(farmArea)
+      )
     ) {
       return;
     }
 
     if (
-      !Number.isFinite(Number(predictedYield)) ||
-      !Number.isFinite(Number(predictedProfit))
+      !Number.isFinite(
+        Number(predictedYield)
+      ) ||
+      !Number.isFinite(
+        Number(predictedProfit)
+      )
     ) {
       return;
     }
 
     const areaHectares =
-      farmArea * ACRES_TO_HECTARES;
+      farmArea *
+      ACRES_TO_HECTARES;
 
     const totalProductionQuintals =
       Number(predictedYield) *
@@ -628,6 +900,7 @@ Please explain:
 4. Any important caution.
 
 Do not invent weather, market prices, pesticide dosages, or guaranteed outcomes.
+
 Keep the advice simple and practical for an Indian farmer.
 `;
 
@@ -638,39 +911,56 @@ Keep the advice simple and practical for an Indian farmer.
     });
   }
 
-  // =========================================================
-  // DISPLAY
-  // =========================================================
+  /* ===========================================================
+     DISPLAY VALUES
+     =========================================================== */
 
   const displayedYield =
     farmerDataLoading
-      ? "Loading..."
+      ? t("Loading...")
       : predictionLoading
-        ? "Calculating..."
-        : Number.isFinite(Number(predictedYield))
+        ? t("Calculating...")
+        : Number.isFinite(
+            Number(predictedYield)
+          )
           ? `${(
-              Number(predictedYield) *
+              Number(
+                predictedYield
+              ) *
               Number(farmArea) *
               ACRES_TO_HECTARES *
               TONNES_TO_QUINTALS
             ).toFixed(1)} Q`
           : modelLoading
-            ? "Loading..."
+            ? t("Loading...")
             : "--";
 
   const displayedProfit =
     farmerDataLoading
-      ? "Loading..."
+      ? t("Loading...")
       : predictionLoading
-        ? "Calculating..."
-        : Number.isFinite(Number(predictedProfit))
+        ? t("Calculating...")
+        : Number.isFinite(
+            Number(predictedProfit)
+          )
           ? `₹${Math.round(
               predictedProfit
             ).toLocaleString("en-IN")}`
           : "--";
 
+  const safeFarmArea =
+    Number.isFinite(
+      Number(farmArea)
+    )
+      ? Number(farmArea)
+      : 0;
+
   return (
-    <Layout title="Farm Dashboard">
+    <Layout
+      title={t(
+        "Farm Analytics Dashboard"
+      )}
+    >
       <div className="space-y-6">
 
         {/* ===================================================
@@ -680,18 +970,33 @@ Keep the advice simple and practical for an Indian farmer.
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
           <h2 className="font-serif text-2xl font-bold text-[#24352a]">
-            Farm Analytics Dashboard
+            {t(
+              "Farm Analytics Dashboard"
+            )}
           </h2>
 
           <div className="rounded-full bg-white px-4 py-2 text-sm text-slate-500 shadow-sm ring-1 ring-[#e5dfd2]">
             {farmerDataLoading
-              ? "Loading farm profile..."
+              ? t("Loading farm profile...")
               : `${farmerName || "Farmer"} · ${
-                  Number.isFinite(Number(farmArea))
-                    ? `${Number(farmArea).toFixed(1)} Acres`
-                    : "Area not set"
+                  Number.isFinite(
+                    Number(farmArea)
+                  )
+                    ? `${Number(
+                        farmArea
+                      ).toFixed(
+                        1
+                      )} ${t(
+                        "Acres"
+                      )}`
+                    : t(
+                        "Area not set"
+                      )
                 } · ${
-                  farmerState || "State not set"
+                  farmerState ||
+                  t(
+                    "State not set"
+                  )
                 }`}
           </div>
 
@@ -718,12 +1023,12 @@ Keep the advice simple and practical for an Indian farmer.
         )}
 
         {/* ===================================================
-            TOP CARDS
+            TOP STAT CARDS
         =================================================== */}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-          {/* YIELD */}
+          {/* ESTIMATED YIELD */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
@@ -736,16 +1041,20 @@ Keep the advice simple and practical for an Indian farmer.
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Estimated Yield
+              {t(
+                "Estimated Yield"
+              )}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Total farm production
+              {t(
+                "Total farm production"
+              )}
             </p>
 
           </div>
 
-          {/* PROFIT */}
+          {/* EXPECTED PROFIT */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
@@ -758,16 +1067,18 @@ Keep the advice simple and practical for an Indian farmer.
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Expected Profit
+              {t(
+                "Expected Profit"
+              )}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Based on current inputs
+              {farmerCrop || "--"}
             </p>
 
           </div>
 
-          {/* HEALTH */}
+          {/* FARM HEALTH */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
@@ -780,16 +1091,20 @@ Keep the advice simple and practical for an Indian farmer.
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Farm Health Score
+              {t(
+                "Farm Health Score"
+              )}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Good condition
+              {t(
+                "Good condition"
+              )}
             </p>
 
           </div>
 
-          {/* RISK */}
+          {/* YIELD RISK */}
 
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
@@ -798,15 +1113,19 @@ Keep the advice simple and practical for an Indian farmer.
             </div>
 
             <p className="mt-4 font-serif text-3xl font-bold text-orange-500">
-              Low
+              {t("Low")}
             </p>
 
             <p className="mt-1 text-sm font-semibold text-[#24352a]">
-              Yield Risk
+              {t(
+                "Yield Risk"
+              )}
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              No major threats
+              {t(
+                "No major threats"
+              )}
             </p>
 
           </div>
@@ -824,7 +1143,9 @@ Keep the advice simple and practical for an Indian farmer.
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
-              Yield History (Quintals)
+              {t(
+                "Yield History (Quintals)"
+              )}
             </h3>
 
             <div className="relative mt-5 h-[250px]">
@@ -958,12 +1279,31 @@ Keep the advice simple and practical for an Indian farmer.
               </svg>
 
               <div className="absolute bottom-1 left-7 right-0 flex justify-between text-xs text-slate-500">
-                <span>Aug</span>
-                <span>Sep</span>
-                <span>Oct</span>
-                <span>Nov</span>
-                <span>Dec</span>
-                <span>Jan</span>
+
+                <span>
+                  {t("Aug")}
+                </span>
+
+                <span>
+                  {t("Sep")}
+                </span>
+
+                <span>
+                  {t("Oct")}
+                </span>
+
+                <span>
+                  {t("Nov")}
+                </span>
+
+                <span>
+                  {t("Dec")}
+                </span>
+
+                <span>
+                  {t("Jan")}
+                </span>
+
               </div>
 
             </div>
@@ -975,49 +1315,68 @@ Keep the advice simple and practical for an Indian farmer.
           <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
 
             <h3 className="font-serif text-lg font-bold text-[#24352a]">
-              Key Yield Factors
+              {t(
+                "Key Yield Factors"
+              )}
             </h3>
 
             <div className="mt-5 space-y-5">
 
               <Factor
-                label="Soil Moisture"
-                value={72}
+                label={t(
+                  "Soil Moisture"
+                )}
+                value={
+                  yieldFactors?.soilMoisture ??
+                  yieldFactors?.soil_moisture ??
+                  72
+                }
                 color="bg-blue-500"
               />
 
               <Factor
-                label="Farm Area"
+                label={t(
+                  "Farm Area"
+                )}
                 value={
-                  Number.isFinite(
-                    Number(farmArea)
-                  )
-                    ? (Number(farmArea) / 10) * 100
+                  safeFarmArea > 0
+                    ? (safeFarmArea /
+                        10) *
+                      100
                     : 0
                 }
                 color="bg-green-500"
                 displayValue={
-                  Number.isFinite(
-                    Number(farmArea)
-                  )
-                    ? `${Number(farmArea).toFixed(1)} acres`
+                  safeFarmArea > 0
+                    ? `${safeFarmArea.toFixed(
+                        1
+                      )} ${t(
+                        "Acres"
+                      )}`
                     : "--"
                 }
               />
 
               <Factor
-                label="Pest Control"
-                value={FARM.pesticide}
+                label={t(
+                  "Pest Control"
+                )}
+                value={
+                  FARM.pesticide
+                }
                 color="bg-[#2f7357]"
               />
 
               <Factor
-                label="Weather Impact"
+                label={t(
+                  "Weather Impact"
+                )}
                 value={Math.max(
                   0,
                   Math.min(
                     100,
-                    100 - rainfall
+                    100 -
+                      rainfall
                   )
                 )}
                 color="bg-orange-500"
@@ -1042,11 +1401,15 @@ Keep the advice simple and practical for an Indian farmer.
             </span>
 
             <h3 className="font-serif text-xl font-bold text-[#24352a]">
-              What-If Simulator
+              {t(
+                "What-If Simulator"
+              )}
             </h3>
 
             <span className="rounded-full bg-[#2f7357] px-3 py-1 text-xs font-bold text-white">
-              Predictive AI
+              {t(
+                "Predictive AI"
+              )}
             </span>
 
           </div>
@@ -1059,6 +1422,7 @@ Keep the advice simple and practical for an Indian farmer.
             farmerName &&
             farmerCrop &&
             farmerState && (
+
               <div className="mt-4 rounded-xl border border-[#cfe3d1] bg-white/80 px-4 py-3 text-sm text-[#59645c] shadow-sm">
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -1103,6 +1467,7 @@ Keep the advice simple and practical for an Indian farmer.
           ================================================= */}
 
           {modelLoading && (
+
             <div className="mt-4 rounded-xl border border-[#cfe3d1] bg-white/80 px-4 py-3 text-sm text-[#59645c] shadow-sm">
 
               <div className="flex items-center gap-2">
@@ -1110,14 +1475,17 @@ Keep the advice simple and practical for an Indian farmer.
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#cbd5cb] border-t-[#2f7357]" />
 
                 <span className="font-medium">
-                  Preparing yield prediction model...
+                  {t(
+                    "Preparing yield prediction model..."
+                  )}
                 </span>
 
               </div>
 
               <p className="mt-1 pl-6 text-xs leading-5 text-slate-500">
-                Preparing the AI model for prediction. This may take a
-                few moments the first time.
+                {t(
+                  "Preparing the AI model for prediction. This may take a few moments the first time."
+                )}
               </p>
 
             </div>
@@ -1132,34 +1500,52 @@ Keep the advice simple and practical for an Indian farmer.
             {/* RAINFALL */}
 
             <SliderControl
-              icon={<CloudRain size={18} />}
-              label="Rainfall"
+              icon={
+                <CloudRain
+                  size={18}
+                />
+              }
+              label={t("Rainfall")}
               value={rainfall}
               setValue={setRainfall}
-              unit="mm"
+              unit=" mm"
             />
 
             {/* FARM AREA */}
 
             <SliderControl
-              icon={<Ruler size={18} />}
-              label="Farm Area"
+              icon={
+                <Ruler size={18} />
+              }
+              label={t(
+                "Farm Area"
+              )}
               value={
                 Number.isFinite(
-                  Number(farmArea)
+                  Number(
+                    farmArea
+                  )
                 )
-                  ? farmArea
+                  ? Number(
+                      farmArea
+                    )
                   : 1
               }
-              setValue={setFarmArea}
+              setValue={
+                setFarmArea
+              }
               min={1}
               max={10}
               step={0.1}
-              unit=" acres"
+              unit={` ${t(
+                "Acres"
+              )}`}
               decimals={1}
               disabled={
                 !Number.isFinite(
-                  Number(farmArea)
+                  Number(
+                    farmArea
+                  )
                 )
               }
             />
@@ -1169,7 +1555,9 @@ Keep the advice simple and practical for an Indian farmer.
             <div className="rounded-2xl bg-white p-5">
 
               <p className="text-xs font-bold tracking-wide text-slate-500">
-                PREDICTED RESULTS
+                {t(
+                  "Predicted Results"
+                )}
               </p>
 
               <div className="mt-5">
@@ -1179,7 +1567,9 @@ Keep the advice simple and practical for an Indian farmer.
                 </p>
 
                 <p className="text-sm text-slate-500">
-                  Estimated Yield
+                  {t(
+                    "Estimated Yield"
+                  )}
                 </p>
 
               </div>
@@ -1193,14 +1583,18 @@ Keep the advice simple and practical for an Indian farmer.
                 </p>
 
                 <p className="text-sm text-slate-500">
-                  Expected Profit
+                  {t(
+                    "Expected Profit"
+                  )}
                 </p>
 
               </div>
 
               <button
                 type="button"
-                onClick={handleAskAI}
+                onClick={
+                  handleAskAI
+                }
                 disabled={
                   farmerDataLoading ||
                   predictionLoading ||
@@ -1209,10 +1603,14 @@ Keep the advice simple and practical for an Indian farmer.
                   !farmerCrop ||
                   !farmerState ||
                   !Number.isFinite(
-                    Number(predictedYield)
+                    Number(
+                      predictedYield
+                    )
                   ) ||
                   !Number.isFinite(
-                    Number(predictedProfit)
+                    Number(
+                      predictedProfit
+                    )
                   )
                 }
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-[#2f7357] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#245d46] disabled:cursor-not-allowed disabled:opacity-60"
@@ -1220,12 +1618,16 @@ Keep the advice simple and practical for an Indian farmer.
 
                 <Mic size={17} />
 
-                Ask AI to Optimize
+                {t(
+                  "Ask AI to Optimize"
+                )}
 
               </button>
 
               <p className="mt-2 text-center text-xs text-slate-400">
-                Opens AI Copilot with your current simulation
+                {t(
+                  "Opens AI Copilot with your current simulation"
+                )}
               </p>
 
             </div>
@@ -1233,7 +1635,7 @@ Keep the advice simple and practical for an Indian farmer.
           </div>
 
           {/* =================================================
-              HORIZONTAL MODEL DETAILS
+              MODEL DETAILS
           ================================================= */}
 
           <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[#e5dfd2]">
@@ -1241,11 +1643,15 @@ Keep the advice simple and practical for an Indian farmer.
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
 
               <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                Model Details
+                {t(
+                  "Model Details"
+                )}
               </p>
 
               <span className="text-xs text-slate-400">
-                Live simulation values
+                {t(
+                  "Live simulation values"
+                )}
               </span>
 
             </div>
@@ -1255,7 +1661,9 @@ Keep the advice simple and practical for an Indian farmer.
               <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
 
                 <DebugRow
-                  label="Model prediction"
+                  label={t(
+                    "Model prediction"
+                  )}
                   value={
                     Number.isFinite(
                       Number(
@@ -1264,13 +1672,17 @@ Keep the advice simple and practical for an Indian farmer.
                     )
                       ? `${Number(
                           predictionDebug.modelPrediction
-                        ).toFixed(2)} tonnes/ha`
+                        ).toFixed(
+                          2
+                        )} tonnes/ha`
                       : "--"
                   }
                 />
 
                 <DebugRow
-                  label="Total production"
+                  label={t(
+                    "Total production"
+                  )}
                   value={
                     Number.isFinite(
                       Number(
@@ -1279,13 +1691,17 @@ Keep the advice simple and practical for an Indian farmer.
                     )
                       ? `${Number(
                           predictionDebug.totalProductionQuintals
-                        ).toFixed(1)} Q`
+                        ).toFixed(
+                          1
+                        )} Q`
                       : "--"
                   }
                 />
 
                 <DebugRow
-                  label="Farm area"
+                  label={t(
+                    "Farm area"
+                  )}
                   value={
                     Number.isFinite(
                       Number(
@@ -1294,18 +1710,26 @@ Keep the advice simple and practical for an Indian farmer.
                     )
                       ? `${Number(
                           predictionDebug.farmArea
-                        ).toFixed(1)} acres`
+                        ).toFixed(
+                          1
+                        )} ${t(
+                          "Acres"
+                        )}`
                       : "--"
                   }
                 />
 
                 <DebugRow
-                  label="Rainfall"
+                  label={t(
+                    "Rainfall"
+                  )}
                   value={`${predictionDebug.rainfall} mm`}
                 />
 
                 <DebugRow
-                  label="Market price"
+                  label={t(
+                    "Market price"
+                  )}
                   value={
                     Number.isFinite(
                       Number(
@@ -1322,7 +1746,9 @@ Keep the advice simple and practical for an Indian farmer.
                 />
 
                 <DebugRow
-                  label="Revenue"
+                  label={t(
+                    "Revenue"
+                  )}
                   value={
                     Number.isFinite(
                       Number(
@@ -1339,7 +1765,9 @@ Keep the advice simple and practical for an Indian farmer.
                 />
 
                 <DebugRow
-                  label="Total cost"
+                  label={t(
+                    "Total cost"
+                  )}
                   value={
                     Number.isFinite(
                       Number(
@@ -1356,7 +1784,9 @@ Keep the advice simple and practical for an Indian farmer.
                 />
 
                 <DebugRow
-                  label="Profit"
+                  label={t(
+                    "Profit"
+                  )}
                   value={
                     Number.isFinite(
                       Number(
@@ -1377,14 +1807,16 @@ Keep the advice simple and practical for an Indian farmer.
             ) : (
 
               <p className="mt-3 text-xs text-slate-500">
-                Prediction details will appear after the model runs.
+                {t(
+                  "Prediction details will appear after the model runs."
+                )}
               </p>
 
             )}
 
             <p className="mt-5 border-t border-[#e5dfd2] pt-4 text-xs leading-5 text-slate-400">
-              Profit currently uses the temporary ₹1,900/Q market
-              price and ₹7,000 per acre demo cultivation cost.
+              Profit currently uses the temporary ₹1,200/Q market
+              price and ₹12,000 per acre demo cultivation cost.
               The market price will be replaced by the Mandi API
               when it is connected.
             </p>
@@ -1398,14 +1830,16 @@ Keep the advice simple and practical for an Indian farmer.
   );
 }
 
-// =============================================================
-// DEBUG ROW
-// =============================================================
+/* =============================================================
+   DEBUG ROW
+   ============================================================= */
 
-function DebugRow({ label, value }) {
+function DebugRow({
+  label,
+  value,
+}) {
   return (
     <div>
-
       <p className="text-xs text-slate-400">
         {label}
       </p>
@@ -1413,14 +1847,13 @@ function DebugRow({ label, value }) {
       <p className="mt-1 text-sm font-semibold text-[#24352a]">
         {value}
       </p>
-
     </div>
   );
 }
 
-// =============================================================
-// FACTOR
-// =============================================================
+/* =============================================================
+   FACTOR COMPONENT
+   ============================================================= */
 
 function Factor({
   label,
@@ -1428,14 +1861,21 @@ function Factor({
   color,
   displayValue,
 }) {
-  const numericValue = Number(value);
+  const numericValue =
+    Number(value);
 
-  const safeValue = Number.isFinite(numericValue)
-    ? Math.max(
-        0,
-        Math.min(100, numericValue)
-      )
-    : 0;
+  const safeValue =
+    Number.isFinite(
+      numericValue
+    )
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            numericValue
+          )
+        )
+      : 0;
 
   return (
     <div>
@@ -1448,7 +1888,9 @@ function Factor({
 
         <p className="text-sm font-bold text-[#24352a]">
           {displayValue ??
-            `${Math.round(safeValue)}%`}
+            `${Math.round(
+              safeValue
+            )}%`}
         </p>
 
       </div>
@@ -1468,9 +1910,9 @@ function Factor({
   );
 }
 
-// =============================================================
-// SLIDER
-// =============================================================
+/* =============================================================
+   SLIDER COMPONENT
+   ============================================================= */
 
 function SliderControl({
   icon,
@@ -1502,7 +1944,11 @@ function SliderControl({
         </div>
 
         <p className="text-sm font-bold text-[#2f7357]">
-          {Number(value).toFixed(decimals)}
+          {Number(
+            value
+          ).toFixed(
+            decimals
+          )}
           {unit}
         </p>
 
@@ -1516,7 +1962,11 @@ function SliderControl({
         value={value}
         disabled={disabled}
         onChange={(e) =>
-          setValue(Number(e.target.value))
+          setValue(
+            Number(
+              e.target.value
+            )
+          )
         }
         className="mt-4 w-full accent-[#2f7357] disabled:cursor-not-allowed disabled:opacity-50"
       />
