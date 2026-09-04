@@ -317,8 +317,12 @@ function Sidebar({ t, language }) {
     <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-[#e5dfd2] bg-white">
       {/* Logo */}
       <div className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1f5b3d] text-white">
-          <Wheat size={18} />
+        <div className="h-10 w-10 rounded-xl flex items-center justify-center overflow-hidden">
+          <img
+            src="/logo.png"
+            alt="KrishiSahayak"
+            className="h-full w-full object-contain"
+          />
         </div>
 
         <div className="leading-tight">
