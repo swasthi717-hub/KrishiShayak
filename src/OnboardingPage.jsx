@@ -7,7 +7,6 @@ import { useLanguage } from "./context/LanguageContext";
 import { translateTexts } from "./services/translation";
 import { getCurrentLocation } from "./services/location";
 
-
 const languages = [
   { code: "hi", name: "हिन्दी", english: "Hindi" },
   { code: "en", name: "English", english: "English" },
@@ -22,92 +21,76 @@ const languages = [
   { code: "or", name: "ଓଡ଼ିଆ", english: "Odia" },
 ];
 
-
 const englishTexts = {
   title: "Tell us about your farm",
-
   subtitle:
     "Just a few details to personalise KrishiSahayak for you.",
-
   language: "Preferred language",
-
   name: "Your name",
-
   namePlaceholder: "Enter your name",
-
   land: "How much land do you farm?",
-
   landPlaceholder: "Enter land area",
-
   unit: "Unit",
-
   crop: "What is your main crop?",
-
   cropPlaceholder: "e.g. Wheat, Rice, Tomato",
-
   state: "State",
-
   statePlaceholder: "Enter your state",
-
   district: "District",
-
   districtPlaceholder: "Enter your district",
-
   continue: "Continue",
-
   saving: "Saving...",
+  locationTitle: "Allow location access",
+  locationDescription:
+    "Allow location access so we can provide information relevant to your farm.",
+  gettingLocation: "Getting location...",
+  allowLocation: "Allow Location",
+  skipLocation: "Skip for now",
+  loggedInError: "You must be logged in.",
+  nameError: "Please enter your name.",
+  areaError: "Please enter your land area.",
+  cropError: "Please enter your main crop.",
+  genericError: "Something went wrong.",
+  locationError: "Unable to get your location.",
+  locationDenied:
+    "Location permission was denied. You can allow it from your browser settings.",
+  locationUnavailable:
+    "Your location could not be determined. Please try again.",
+  locationTimeout:
+    "Location request timed out. Please try again.",
+  onboardingError:
+    "Unable to complete onboarding. Please try again.",
 };
 
-
 export default function OnboardingPage() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
 
-  const {
-    language,
-    setLanguage,
-  } = useLanguage();
+  const { language, setLanguage } = useLanguage();
 
   const navigate = useNavigate();
 
-
   const [name, setName] = useState("");
-
   const [area, setArea] = useState("");
-
-  const [areaUnit, setAreaUnit] =
-    useState("acre");
-
+  const [areaUnit, setAreaUnit] = useState("acre");
   const [crop, setCrop] = useState("");
-
   const [state, setState] = useState("");
+  const [district, setDistrict] = useState("");
 
-  const [district, setDistrict] =
-    useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const [loading, setLoading] =
-    useState(false);
+  const [translated, setTranslated] = useState(englishTexts);
+  const [translationLoading, setTranslationLoading] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [locationStep, setLocationStep] = useState(false);
+  const [farmId, setFarmId] = useState(null);
 
-  const [translated, setTranslated] =
-    useState(englishTexts);
-
-  const [translationLoading, setTranslationLoading] =
-    useState(false);
-
-
-  /*
-   * Translate onboarding UI whenever
-   * the global language changes.
-   */
   useEffect(() => {
     let cancelled = false;
 
     const loadTranslations = async () => {
-      // English doesn't need API translation
       if (language === "en") {
         setTranslated(englishTexts);
+        setTranslationLoading(false);
         return;
       }
 
@@ -116,29 +99,22 @@ export default function OnboardingPage() {
       try {
         const keys = Object.keys(englishTexts);
 
-        const translatedValues =
-          await translateTexts(
-            keys.map(
-              (key) => englishTexts[key]
-            ),
-            language
-          );
+        const translatedValues = await translateTexts(
+          keys.map((key) => englishTexts[key]),
+          language
+        );
 
         if (cancelled) return;
 
         const result = {};
 
         keys.forEach((key, index) => {
-          result[key] =
-            translatedValues[index];
+          result[key] = translatedValues[index];
         });
 
         setTranslated(result);
       } catch (err) {
-        console.error(
-          "Onboarding translation failed:",
-          err
-        );
+        console.error("Onboarding translation failed:", err);
 
         if (!cancelled) {
           setTranslated(englishTexts);
@@ -157,134 +133,271 @@ export default function OnboardingPage() {
     };
   }, [language]);
 
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     setError("");
 
     if (!user) {
-      setError("You must be logged in.");
+      setError(englishTexts.loggedInError);
       return;
     }
 
     if (!name.trim()) {
-      setError("Please enter your name.");
+      setError(englishTexts.nameError);
       return;
     }
 
     if (!area || Number(area) <= 0) {
-      setError("Please enter your land area.");
+      setError(englishTexts.areaError);
       return;
     }
 
     if (!crop.trim()) {
-      setError("Please enter your main crop.");
+      setError(englishTexts.cropError);
       return;
     }
 
     try {
       setLoading(true);
 
-
-      // 1. Update farmer profile
-      const { error: profileError } =
-        await supabase
-          .from("profiles")
-          .update({
+      // 1. Create/update farmer profile.
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            user_id: user.id,
             name: name.trim(),
             preferred_language: language,
-            state:
-              state.trim() || null,
-            district:
-              district.trim() || null,
-          })
-          .eq("user_id", user.id);
+            state: state.trim() || null,
+            district: district.trim() || null,
+            onboarding_completed: false,
+          },
+          { onConflict: "user_id" }
+        );
 
       if (profileError) {
         throw profileError;
       }
 
-
-      // 2. Create farm
-      const { data: farm, error: farmError } =
-        await supabase
-          .from("farms")
-          .insert({
-            user_id: user.id,
-
-            farm_name:
-              `${name.trim()}'s Farm`,
-
-            area: Number(area),
-
-            area_unit: areaUnit,
-
-            state:
-              state.trim() || null,
-
-            district:
-              district.trim() || null,
-          })
-          .select()
-          .single();
+      // 2. Create farm.
+      const { data: farm, error: farmError } = await supabase
+        .from("farms")
+        .insert({
+          user_id: user.id,
+          farm_name: `${name.trim()}'s Farm`,
+          area: Number(area),
+          area_unit: areaUnit,
+          state: state.trim() || null,
+          district: district.trim() || null,
+        })
+        .select()
+        .single();
 
       if (farmError) {
         throw farmError;
       }
 
-
-      // 3. Create main crop
-      const { error: cropError } =
-        await supabase
-          .from("crops")
-          .insert({
-            farm_id: farm.id,
-
-            crop_name:
-              crop.trim(),
-
-            acreage:
-              areaUnit === "acre"
-                ? Number(area)
-                : null,
-          });
+      // 3. Create main crop.
+      const { error: cropError } = await supabase
+        .from("crops")
+        .insert({
+          farm_id: farm.id,
+          crop_name: crop.trim(),
+          acreage: areaUnit === "acre" ? Number(area) : null,
+        });
 
       if (cropError) {
         throw cropError;
       }
 
+      // 4. Save the farm ID and move to the location step.
+      setFarmId(farm.id);
+      setLocationStep(true);
+    } catch (err) {
+      console.error("Onboarding error:", err);
+      setError(err.message || englishTexts.genericError);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // 4. Mark onboarding as completed
-      const {
-        error: onboardingError,
-      } = await supabase
-        .from("profiles")
+  const handleGetLocation = async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      const location = await getCurrentLocation();
+
+      console.log("Farmer GPS location:", location);
+
+      // Update the farm with GPS information.
+      const { error: locationError } = await supabase
+        .from("farms")
         .update({
-          onboarding_completed: true,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          location_accuracy_meters: location.accuracy,
+          location_source: "gps",
+          location_updated_at: new Date().toISOString(),
         })
+        .eq("id", farmId);
+
+      if (locationError) {
+        throw locationError;
+      }
+
+      // Mark onboarding as completed.
+      const { error: onboardingError } = await supabase
+        .from("profiles")
+        .update({ onboarding_completed: true })
         .eq("user_id", user.id);
 
       if (onboardingError) {
         throw onboardingError;
       }
 
+      // Refresh profile so ProtectedRoute immediately sees completion.
+      if (typeof refreshProfile === "function") {
+        await refreshProfile();
+      }
 
-      // 5. Go to dashboard
-      navigate("/dashboard");
-
+      navigate("/dashboard", { replace: true });
     } catch (err) {
-      console.error(err);
+      console.error("Location error:", err);
 
-      setError(
-        err.message ||
-        "Something went wrong."
-      );
+      let message = englishTexts.locationError;
+
+      if (err.code === 1) {
+        message = englishTexts.locationDenied;
+      } else if (err.code === 2) {
+        message = englishTexts.locationUnavailable;
+      } else if (err.code === 3) {
+        message = englishTexts.locationTimeout;
+      }
+
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSkipLocation = async () => {
+    if (!user) {
+      setError(englishTexts.loggedInError);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const { error: onboardingError } = await supabase
+        .from("profiles")
+        .update({ onboarding_completed: true })
+        .eq("user_id", user.id);
+
+      if (onboardingError) {
+        throw onboardingError;
+      }
+
+      if (typeof refreshProfile === "function") {
+        await refreshProfile();
+      }
+
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      console.error("Error completing onboarding:", err);
+      setError(err.message || englishTexts.onboardingError);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (locationStep) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#f8f3e7",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 20,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 520,
+            background: "#fffdf8",
+            borderRadius: 20,
+            padding: 32,
+            boxShadow: "0 15px 50px rgba(0,0,0,.08)",
+          }}
+        >
+          <h1 style={{ color: "#0c3d2b" }}>
+            {translated.locationTitle}
+          </h1>
+
+          <p style={{ color: "#647067", marginBottom: 24 }}>
+            {translated.locationDescription}
+          </p>
+
+          {error && (
+            <div
+              style={{
+                background: "#fff0ee",
+                color: "#b42318",
+                padding: 10,
+                borderRadius: 8,
+                marginBottom: 12,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleGetLocation}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 14,
+              border: 0,
+              borderRadius: 10,
+              background: loading ? "#8aa99a" : "#145a3f",
+              color: "white",
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading
+              ? translated.gettingLocation
+              : translated.allowLocation}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSkipLocation}
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: 14,
+              border: 0,
+              background: "transparent",
+              color: "#145a3f",
+              fontWeight: 600,
+              marginTop: 10,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {translated.skipLocation}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -304,11 +417,9 @@ export default function OnboardingPage() {
           background: "#fffdf8",
           borderRadius: 20,
           padding: 32,
-          boxShadow:
-            "0 15px 50px rgba(0,0,0,.08)",
+          boxShadow: "0 15px 50px rgba(0,0,0,.08)",
         }}
       >
-
         <h1
           style={{
             color: "#0c3d2b",
@@ -317,7 +428,6 @@ export default function OnboardingPage() {
         >
           {translated.title}
         </h1>
-
 
         <p
           style={{
@@ -328,11 +438,8 @@ export default function OnboardingPage() {
           {translated.subtitle}
         </p>
 
-
         <form onSubmit={handleSubmit}>
-
           {/* Language */}
-
           <label
             style={{
               display: "block",
@@ -342,28 +449,20 @@ export default function OnboardingPage() {
             {translated.language}
           </label>
 
-
           <select
             value={language}
-            onChange={(e) =>
-              setLanguage(e.target.value)
-            }
+            onChange={(e) => setLanguage(e.target.value)}
             style={inputStyle}
             disabled={translationLoading}
           >
             {languages.map((lang) => (
-              <option
-                key={lang.code}
-                value={lang.code}
-              >
+              <option key={lang.code} value={lang.code}>
                 {lang.name} — {lang.english}
               </option>
             ))}
           </select>
 
-
           {/* Name */}
-
           <label
             style={{
               display: "block",
@@ -373,21 +472,14 @@ export default function OnboardingPage() {
             {translated.name}
           </label>
 
-
           <input
             style={inputStyle}
             value={name}
-            onChange={(e) =>
-              setName(e.target.value)
-            }
-            placeholder={
-              translated.namePlaceholder
-            }
+            onChange={(e) => setName(e.target.value)}
+            placeholder={translated.namePlaceholder}
           />
 
-
           {/* Land */}
-
           <label
             style={{
               display: "block",
@@ -397,14 +489,12 @@ export default function OnboardingPage() {
             {translated.land}
           </label>
 
-
           <div
             style={{
               display: "flex",
               gap: 10,
             }}
           >
-
             <input
               style={{
                 ...inputStyle,
@@ -414,51 +504,27 @@ export default function OnboardingPage() {
               min="0"
               step="0.01"
               value={area}
-              onChange={(e) =>
-                setArea(e.target.value)
-              }
-              placeholder={
-                translated.landPlaceholder
-              }
+              onChange={(e) => setArea(e.target.value)}
+              placeholder={translated.landPlaceholder}
             />
-
 
             <select
               value={areaUnit}
-              onChange={(e) =>
-                setAreaUnit(e.target.value)
-              }
+              onChange={(e) => setAreaUnit(e.target.value)}
               style={{
                 ...inputStyle,
                 width: 130,
               }}
             >
-              <option value="acre">
-                Acre
-              </option>
-
-              <option value="hectare">
-                Hectare
-              </option>
-
-              <option value="bigha">
-                Bigha
-              </option>
-
-              <option value="guntha">
-                Guntha
-              </option>
-
-              <option value="sq_m">
-                sq. m
-              </option>
+              <option value="acre">Acre</option>
+              <option value="hectare">Hectare</option>
+              <option value="bigha">Bigha</option>
+              <option value="guntha">Guntha</option>
+              <option value="sq_m">sq. m</option>
             </select>
-
           </div>
 
-
           {/* Crop */}
-
           <label
             style={{
               display: "block",
@@ -468,21 +534,14 @@ export default function OnboardingPage() {
             {translated.crop}
           </label>
 
-
           <input
             style={inputStyle}
             value={crop}
-            onChange={(e) =>
-              setCrop(e.target.value)
-            }
-            placeholder={
-              translated.cropPlaceholder
-            }
+            onChange={(e) => setCrop(e.target.value)}
+            placeholder={translated.cropPlaceholder}
           />
 
-
           {/* State */}
-
           <label
             style={{
               display: "block",
@@ -492,21 +551,14 @@ export default function OnboardingPage() {
             {translated.state}
           </label>
 
-
           <input
             style={inputStyle}
             value={state}
-            onChange={(e) =>
-              setState(e.target.value)
-            }
-            placeholder={
-              translated.statePlaceholder
-            }
+            onChange={(e) => setState(e.target.value)}
+            placeholder={translated.statePlaceholder}
           />
 
-
           {/* District */}
-
           <label
             style={{
               display: "block",
@@ -516,21 +568,14 @@ export default function OnboardingPage() {
             {translated.district}
           </label>
 
-
           <input
             style={inputStyle}
             value={district}
-            onChange={(e) =>
-              setDistrict(e.target.value)
-            }
-            placeholder={
-              translated.districtPlaceholder
-            }
+            onChange={(e) => setDistrict(e.target.value)}
+            placeholder={translated.districtPlaceholder}
           />
 
-
           {/* Error */}
-
           {error && (
             <div
               style={{
@@ -545,9 +590,6 @@ export default function OnboardingPage() {
             </div>
           )}
 
-
-          {/* Continue */}
-
           <button
             type="submit"
             disabled={loading}
@@ -556,37 +598,26 @@ export default function OnboardingPage() {
               padding: 14,
               border: 0,
               borderRadius: 10,
-              background:
-                loading
-                  ? "#8aa99a"
-                  : "#145a3f",
+              background: loading ? "#8aa99a" : "#145a3f",
               color: "white",
               fontWeight: 700,
-              cursor:
-                loading
-                  ? "not-allowed"
-                  : "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               marginTop: 10,
             }}
           >
-            {loading
-              ? translated.saving
-              : translated.continue}
+            {loading ? translated.saving : translated.continue}
           </button>
-
         </form>
       </div>
     </div>
   );
 }
 
-
 const inputStyle = {
   width: "100%",
   padding: "12px 14px",
   borderRadius: 9,
-  border:
-    "1px solid #d8d2c4",
+  border: "1px solid #d8d2c4",
   background: "#fff",
   color: "#0c3d2b",
   fontSize: 14,

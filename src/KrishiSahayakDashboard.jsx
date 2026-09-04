@@ -16,11 +16,15 @@ import {
   ChevronRight,
   Wind,
   Droplets,
+  Bug,
+  CloudRain,
+  ThermometerSun,
+  Sun,
 } from "lucide-react";
 
+import { useAuth } from "./context/AuthContext";
 import { useLanguage } from "./context/LanguageContext";
 import { translateTexts } from "./services/translation";
-
 
 // ---------------------------------------------------------
 // NAVIGATION
@@ -33,19 +37,9 @@ const NAV_ITEMS = [
   { key: "cropScanner", icon: Camera, path: "/crop-scanner" },
   { key: "mandiMarket", icon: TrendingUp, path: "/mandi-market" },
   { key: "farmDashboard", icon: BarChart3, path: "/farm-dashboard" },
-  {
-    key: "smartAlerts",
-    icon: Bell,
-    path: "/alerts",
-    badge: 3,
-  },
-  {
-    key: "profile",
-    icon: User,
-    path: "/profile",
-  },
+  { key: "smartAlerts", icon: Bell, path: "/alerts", badge: 3 },
+  { key: "profile", icon: User, path: "/profile" },
 ];
-
 
 // ---------------------------------------------------------
 // ALERT DATA
@@ -53,36 +47,39 @@ const NAV_ITEMS = [
 
 const ALERTS = [
   {
-    emoji: "⚠️🐛",
+    icon: Bug,
     key: "pestOutbreak",
+    badgeKey: "urgent",
     descriptionKey: "pestDescription",
-    badge: "urgent",
     linkKey: "getAdvice",
+    path: "/ai-copilot",
     theme: "red",
   },
   {
-    emoji: "🌧️",
+    icon: CloudRain,
     key: "rainTomorrow",
     descriptionKey: "rainDescription",
     linkKey: "viewWeather",
+    path: "/weather",
     theme: "blue",
   },
   {
-    emoji: "📈",
+    icon: TrendingUp,
     key: "tomatoPrices",
     descriptionKey: "tomatoDescription",
     linkKey: "seePrices",
+    path: "/mandi-market",
     theme: "green",
   },
   {
-    emoji: "🌡️",
+    icon: ThermometerSun,
     key: "heatwave",
     descriptionKey: "heatwaveDescription",
     linkKey: "viewWeather",
+    path: "/weather",
     theme: "orange",
   },
 ];
-
 
 // ---------------------------------------------------------
 // STATS
@@ -95,6 +92,7 @@ const STATS = [
     labelKey: "yieldEstimate",
     subKey: "yieldSub",
     theme: "green",
+    path: "/farm-dashboard",
   },
   {
     icon: TrendingUp,
@@ -102,6 +100,7 @@ const STATS = [
     labelKey: "expectedProfit",
     subKey: "expectedProfitSub",
     theme: "green",
+    path: "/farm-dashboard",
   },
   {
     icon: Activity,
@@ -109,6 +108,7 @@ const STATS = [
     labelKey: "farmHealth",
     subKey: "farmHealthSub",
     theme: "blue",
+    path: "/farm-dashboard",
   },
   {
     icon: Bell,
@@ -116,9 +116,9 @@ const STATS = [
     labelKey: "alertsToday",
     subKey: "alertsTodaySub",
     theme: "red",
+    path: "/alerts",
   },
 ];
-
 
 // ---------------------------------------------------------
 // COLORS / THEMES
@@ -129,24 +129,27 @@ const ALERT_THEMES = {
     card: "bg-red-50 border-red-200",
     link: "text-red-600 hover:text-red-700",
     badge: "bg-red-600 text-white",
+    icon: "text-red-600",
   },
-
   blue: {
     card: "bg-blue-50 border-blue-200",
     link: "text-[#1f5b3d] hover:text-[#173b27]",
+    badge: "bg-blue-600 text-white",
+    icon: "text-blue-600",
   },
-
   green: {
     card: "bg-[#e7edda] border-[#c9d9bd]",
     link: "text-[#1f5b3d] hover:text-[#173b27]",
+    badge: "bg-[#1f5b3d] text-white",
+    icon: "text-[#1f5b3d]",
   },
-
   orange: {
     card: "bg-orange-50 border-orange-200",
     link: "text-[#1f5b3d] hover:text-[#173b27]",
+    badge: "bg-orange-600 text-white",
+    icon: "text-orange-600",
   },
 };
-
 
 const STAT_THEMES = {
   green: "text-[#1f5b3d]",
@@ -154,11 +157,9 @@ const STAT_THEMES = {
   red: "text-red-500",
 };
 
-
 // ---------------------------------------------------------
 // ENGLISH SOURCE TEXT
 // These are sent to MyMemory for translation.
-// There are NO hardcoded Hindi/Marathi/etc translations.
 // ---------------------------------------------------------
 
 const ENGLISH_TEXTS = {
@@ -240,21 +241,15 @@ const ENGLISH_TEXTS = {
   },
 };
 
-
 // ---------------------------------------------------------
-// Flatten nested object for API translation
+// Translation helpers
 // ---------------------------------------------------------
 
 function flattenTexts(obj, prefix = "", result = {}) {
   Object.entries(obj).forEach(([key, value]) => {
-    const fullKey = prefix
-      ? `${prefix}.${key}`
-      : key;
+    const fullKey = prefix ? `${prefix}.${key}` : key;
 
-    if (
-      typeof value === "object" &&
-      value !== null
-    ) {
+    if (typeof value === "object" && value !== null) {
       flattenTexts(value, fullKey, result);
     } else {
       result[fullKey] = value;
@@ -263,11 +258,6 @@ function flattenTexts(obj, prefix = "", result = {}) {
 
   return result;
 }
-
-
-// ---------------------------------------------------------
-// Rebuild nested object after translation
-// ---------------------------------------------------------
 
 function setNestedValue(obj, path, value) {
   const keys = path.split(".");
@@ -280,30 +270,20 @@ function setNestedValue(obj, path, value) {
       if (!current[key]) {
         current[key] = {};
       }
-
       current = current[key];
     }
   });
 }
 
-
-function buildTranslatedObject(
-  flatKeys,
-  translatedValues
-) {
+function buildTranslatedObject(flatKeys, translatedValues) {
   const result = {};
 
   flatKeys.forEach((key, index) => {
-    setNestedValue(
-      result,
-      key,
-      translatedValues[index]
-    );
+    setNestedValue(result, key, translatedValues[index]);
   });
 
   return result;
 }
-
 
 // ---------------------------------------------------------
 // SIDEBAR
@@ -311,44 +291,48 @@ function buildTranslatedObject(
 
 function Sidebar({ t, language }) {
   const navigate = useNavigate();
+  const { farmerData } = useAuth();
+
+  const profile = farmerData?.profile;
+  const farm = farmerData?.farm;
+  const crops = farmerData?.crops || [];
+
+  const userName = profile?.name || t.user.name;
+
+  const initials = userName
+    .split(" ")
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const farmDetails =
+    farm?.district ||
+    farm?.state ||
+    t.user.farm;
 
   return (
     <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-[#e5dfd2] bg-white">
-
       {/* Logo */}
-
       <div className="flex items-center gap-2 px-5 py-5">
-
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1f5b3d] text-white">
           <Wheat size={18} />
         </div>
 
         <div className="leading-tight">
-
           <p className="font-serif text-sm font-bold text-[#254a32]">
             KrishiSahayak
           </p>
-
           <p className="text-xs text-slate-500">
             AI Farming Copilot
           </p>
-
         </div>
-
       </div>
 
-
       {/* Navigation */}
-
       <nav className="flex-1 space-y-1 px-3">
-
         {NAV_ITEMS.map(
-          ({
-            key,
-            icon: Icon,
-            path,
-            badge,
-          }) => (
+          ({ key, icon: Icon, path, badge }) => (
             <button
               key={key}
               onClick={() => navigate(path)}
@@ -358,10 +342,12 @@ function Sidebar({ t, language }) {
                   : "text-slate-600 hover:bg-[#f4f1e7]"
               }`}
             >
-
               <span className="flex items-center gap-3">
                 <Icon size={18} />
-                {key === "weather" && language === "hi" ? "मौसम" : t.nav[key]}
+                {key === "weather" &&
+                (language === "hi" || language === "hi-IN")
+                  ? "मौसम"
+                  : t.nav[key]}
               </span>
 
               {badge && (
@@ -369,40 +355,37 @@ function Sidebar({ t, language }) {
                   {badge}
                 </span>
               )}
-
             </button>
           )
         )}
-
       </nav>
 
-
       {/* User */}
-
       <div className="m-3 flex items-center gap-3 rounded-xl bg-[#f4f1e7] p-3">
-
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
-          RP
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d8c29b] text-sm font-semibold text-[#5a4423]">
+          {initials || "F"}
         </div>
 
-        <div className="leading-tight">
-
-          <p className="text-sm font-semibold text-[#24352a]">
-            {t.user.name}
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-semibold text-[#24352a]">
+            {userName}
           </p>
 
-          <p className="text-xs text-slate-500">
-            {t.user.farm}
-          </p>
+          <p className="truncate text-xs text-slate-500">
+            {farmDetails}
 
+            {crops.length > 0 && (
+              <>
+                {" · "}
+                {crops.map((crop) => crop.crop_name).join(", ")}
+              </>
+            )}
+          </p>
         </div>
-
       </div>
-
     </aside>
   );
 }
-
 
 // ---------------------------------------------------------
 // TOP BAR
@@ -413,52 +396,57 @@ function TopBar({ t }) {
 
   return (
     <header className="flex items-center justify-between border-b border-[#e5dfd2] bg-white px-4 py-3 md:px-6">
-
       <h1 className="font-serif text-xl font-bold text-[#24352a]">
         {t.topbar.home}
       </h1>
 
       <div className="flex items-center gap-4">
-
         {/* Bell */}
-
         <button
           onClick={() => navigate("/alerts")}
           className="relative text-slate-500 hover:text-slate-700"
           aria-label={t.topbar.smartAlerts}
         >
-
           <Bell size={20} />
 
           <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
             3
           </span>
-
         </button>
 
-
         {/* Profile */}
-
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e5f0df] text-[#1f5b3d]">
+        <button
+          onClick={() => navigate("/profile")}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e5f0df] text-[#1f5b3d]"
+          aria-label={t.nav.profile}
+        >
           <User size={16} />
-        </div>
-
+        </button>
       </div>
-
     </header>
   );
 }
-
 
 // ---------------------------------------------------------
 // HERO BANNER
 // ---------------------------------------------------------
 
-function HeroBanner({ t, language }) {
+function HeroBanner({ t, language, profile }) {
   const navigate = useNavigate();
 
   const FARM_HERO_URL =
     "https://i.pinimg.com/736x/38/ef/ad/38efadb7ab46f87f0353e4f449412e27.jpg";
+
+  const firstName = profile?.name
+    ? profile.name.split(" ")[0]
+    : null;
+
+  const greeting =
+    firstName
+      ? language === "hi" || language === "hi-IN"
+        ? `नमस्ते, ${firstName} जी!`
+        : `Namaste, ${firstName}!`
+      : t.hero.greeting;
 
   return (
     <div className="relative overflow-hidden rounded-2xl">
@@ -473,31 +461,28 @@ function HeroBanner({ t, language }) {
 
       <div className="absolute inset-0 flex flex-col justify-between p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4">
-
           <div className="max-w-md text-white">
-
-            {/* ONLY GREETING */}
+            {/* Greeting */}
             <p className="flex items-center gap-2 text-sm font-semibold text-white">
-              {language === "hi" || language === "hi-IN" ? "सुप्रभात" : t.hero.goodMorning}
-              <span>☀️</span>
+              {language === "hi" || language === "hi-IN"
+                ? "सुप्रभात"
+                : t.hero.goodMorning}
+              <Sun size={16} />
             </p>
 
-            {/* PERSONAL GREETING */}
+            {/* Personal greeting */}
             <h2 className="mt-4 font-serif text-2xl font-bold sm:text-3xl">
-              {t.hero.greeting}
+              {greeting}
             </h2>
 
             <p className="mt-5 text-sm font-semibold text-white">
               {t.hero.farmDoingWell}
             </p>
-
           </div>
 
           {/* Weather */}
           <div className="hidden shrink-0 rounded-xl bg-white/15 p-10 text-white backdrop-blur-sm sm:block">
-            <p className="text-3xl font-bold">
-              34°C
-            </p>
+            <p className="text-3xl font-bold">34°C</p>
 
             <p className="text-base text-white/90">
               {t.hero.weather}
@@ -515,12 +500,10 @@ function HeroBanner({ t, language }) {
               </span>
             </div>
           </div>
-
         </div>
 
         {/* Hero buttons */}
         <div className="flex flex-wrap gap-7">
-
           <button
             onClick={() => navigate("/ai-copilot")}
             className="flex items-center gap-2 rounded-full bg-white px-5 py-1.5 text-sm font-semibold text-[#1f5b3d] shadow-sm hover:bg-[#e5f0df]"
@@ -536,38 +519,38 @@ function HeroBanner({ t, language }) {
             <Camera size={16} />
             {t.hero.scanCrop}
           </button>
-
         </div>
       </div>
     </div>
   );
 }
 
-
 // ---------------------------------------------------------
 // ALERT CARD
 // ---------------------------------------------------------
 
 function AlertCard({
-  emoji,
+  icon: Icon,
   title,
   badge,
   description,
   linkText,
+  path,
   theme,
 }) {
-  const themeStyles =
-    ALERT_THEMES[theme];
+  const navigate = useNavigate();
+  const themeStyles = ALERT_THEMES[theme] || ALERT_THEMES.green;
 
   return (
     <div
       className={`rounded-xl border-2 p-5 ${themeStyles.card}`}
     >
-
       <div className="flex items-start justify-between gap-2">
-
         <p className="flex items-center gap-2 text-[15px] font-bold text-[#24352a]">
-          <span>{emoji}</span>
+          <Icon
+            size={18}
+            className={themeStyles.icon}
+          />
           {title}
         </p>
 
@@ -578,7 +561,6 @@ function AlertCard({
             {badge}
           </span>
         )}
-
       </div>
 
       <p className="mt-1.5 text-sm text-slate-500">
@@ -586,16 +568,15 @@ function AlertCard({
       </p>
 
       <button
+        onClick={() => navigate(path)}
         className={`mt-2 flex items-center gap-1 text-sm font-bold ${themeStyles.link}`}
       >
         {linkText}
         <ChevronRight size={14} />
       </button>
-
     </div>
   );
 }
-
 
 // ---------------------------------------------------------
 // ACTION PLAN
@@ -606,9 +587,7 @@ function ActionPlanBanner({ t }) {
 
   return (
     <div className="rounded-xl bg-[#e7edda] p-7">
-
       <div className="flex items-center gap-2.5">
-
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#214d34] text-white">
           <Zap size={16} />
         </div>
@@ -616,7 +595,6 @@ function ActionPlanBanner({ t }) {
         <p className="font-serif text-xl font-bold text-[#24352a]">
           {t.actionPlan.title}
         </p>
-
       </div>
 
       <p className="mt-3 text-sm text-[#3d4d40]">
@@ -624,19 +602,15 @@ function ActionPlanBanner({ t }) {
       </p>
 
       <button
-        onClick={() =>
-          navigate("/ai-copilot")
-        }
+        onClick={() => navigate("/ai-copilot")}
         className="mt-4 flex items-center gap-2 rounded-full bg-[#214d34] px-4 py-2 text-sm font-semibold text-white hover:bg-[#173b27]"
       >
         <Mic size={14} />
         {t.actionPlan.askAI}
       </button>
-
     </div>
   );
 }
-
 
 // ---------------------------------------------------------
 // STAT CARD
@@ -648,12 +622,17 @@ function StatCard({
   label,
   sub,
   theme,
+  path,
 }) {
+  const navigate = useNavigate();
+
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#e5dfd2]">
-
+    <button
+      type="button"
+      onClick={() => navigate(path)}
+      className="w-full rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-[#e5dfd2] transition hover:-translate-y-0.5 hover:shadow-md"
+    >
       <div className="flex items-center justify-between">
-
         <Icon
           size={18}
           className={STAT_THEMES[theme]}
@@ -663,7 +642,6 @@ function StatCard({
           size={16}
           className="text-slate-300"
         />
-
       </div>
 
       <p
@@ -679,26 +657,26 @@ function StatCard({
       <p className="text-xs text-slate-400">
         {sub}
       </p>
-
-    </div>
+    </button>
   );
 }
-
 
 // ---------------------------------------------------------
 // MAIN DASHBOARD
 // ---------------------------------------------------------
 
 export default function KrishiShayakDashboard() {
-
+  const navigate = useNavigate();
+  const { farmerData } = useAuth();
   const { language } = useLanguage();
+
+  const profile = farmerData?.profile;
 
   const [translated, setTranslated] =
     useState(ENGLISH_TEXTS);
 
   const [translationLoading, setTranslationLoading] =
     useState(false);
-
 
   // -------------------------------------------------------
   // Translate dashboard whenever language changes
@@ -708,8 +686,6 @@ export default function KrishiShayakDashboard() {
     let cancelled = false;
 
     async function translateDashboard() {
-
-      // English = no API call needed
       if (language === "en") {
         setTranslated(ENGLISH_TEXTS);
         setTranslationLoading(false);
@@ -719,54 +695,39 @@ export default function KrishiShayakDashboard() {
       try {
         setTranslationLoading(true);
 
-        const flatTexts =
-          flattenTexts(ENGLISH_TEXTS);
-
-        const keys =
-          Object.keys(flatTexts);
-
-        const sourceTexts =
-          Object.values(flatTexts);
+        const flatTexts = flattenTexts(ENGLISH_TEXTS);
+        const keys = Object.keys(flatTexts);
+        const sourceTexts = Object.values(flatTexts);
 
         console.log(
           "🌐 Translating dashboard to:",
           language
         );
 
-        const translatedValues =
-          await translateTexts(
-            sourceTexts,
-            language
-          );
+        const translatedValues = await translateTexts(
+          sourceTexts,
+          language
+        );
 
         if (cancelled) return;
 
-        const translatedObject =
-          buildTranslatedObject(
-            keys,
-            translatedValues
-          );
-
-        setTranslated(
-          translatedObject
+        const translatedObject = buildTranslatedObject(
+          keys,
+          translatedValues
         );
 
+        setTranslated(translatedObject);
       } catch (error) {
-
         console.error(
           "Dashboard translation failed:",
           error
         );
 
-        // If API fails, keep English UI
         setTranslated(ENGLISH_TEXTS);
-
       } finally {
-
         if (!cancelled) {
           setTranslationLoading(false);
         }
-
       }
     }
 
@@ -775,131 +736,92 @@ export default function KrishiShayakDashboard() {
     return () => {
       cancelled = true;
     };
-
   }, [language]);
-
 
   // -------------------------------------------------------
   // Use English while translation is loading
   // -------------------------------------------------------
 
-  const t =
-    translationLoading
-      ? ENGLISH_TEXTS
-      : translated;
-
+  const t = translationLoading
+    ? ENGLISH_TEXTS
+    : translated;
 
   return (
     <div className="flex h-screen w-full bg-[#faf7ef] font-sans text-[#24352a]">
-
       <Sidebar t={t} language={language} />
 
       <div className="flex flex-1 flex-col overflow-hidden">
-
         <TopBar t={t} />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
-
           <div className="mx-auto max-w-5xl space-y-6">
-
             {/* Hero */}
-
-            <HeroBanner t={t} language={language} />
-
+            <HeroBanner
+              t={t}
+              language={language}
+              profile={profile}
+            />
 
             {/* Alerts */}
-
             <div>
-
               <div className="mb-3 flex items-center justify-between">
-
                 <h3 className="font-serif text-lg font-semibold text-[#24352a]">
                   {t.alerts.heading}
                 </h3>
 
-                <button className="flex items-center gap-1 text-sm font-medium text-[#1f5b3d] hover:text-[#173b27]">
+                <button
+                  onClick={() => navigate("/alerts")}
+                  className="flex items-center gap-1 text-sm font-medium text-[#1f5b3d] hover:text-[#173b27]"
+                >
                   {t.alerts.viewAll}
                   <ChevronRight size={14} />
                 </button>
-
               </div>
 
-
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-
                 {ALERTS.map((alert) => (
-
                   <AlertCard
                     key={alert.key}
-                    emoji={alert.emoji}
-                    title={
-                      t.alerts[alert.key]
-                    }
+                    icon={alert.icon}
+                    title={t.alerts[alert.key]}
                     badge={
-                      alert.badge
-                        ? t.alerts[
-                            alert.badge
-                          ]
+                      alert.badgeKey
+                        ? t.alerts[alert.badgeKey]
                         : null
                     }
                     description={
-                      t.alerts[
-                        alert.descriptionKey
-                      ]
+                      t.alerts[alert.descriptionKey]
                     }
                     linkText={
-                      t.alerts[
-                        alert.linkKey
-                      ]
+                      t.alerts[alert.linkKey]
                     }
+                    path={alert.path}
                     theme={alert.theme}
                   />
-
                 ))}
-
               </div>
-
             </div>
 
-
             {/* AI Action Plan */}
-
             <ActionPlanBanner t={t} />
 
-
             {/* Stats */}
-
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-
               {STATS.map((stat) => (
-
                 <StatCard
                   key={stat.labelKey}
                   icon={stat.icon}
                   value={stat.value}
-                  label={
-                    t.stats[
-                      stat.labelKey
-                    ]
-                  }
-                  sub={
-                    t.stats[
-                      stat.subKey
-                    ]
-                  }
+                  label={t.stats[stat.labelKey]}
+                  sub={t.stats[stat.subKey]}
                   theme={stat.theme}
+                  path={stat.path}
                 />
-
               ))}
-
             </div>
-
           </div>
-
         </main>
-
       </div>
-
     </div>
   );
 }

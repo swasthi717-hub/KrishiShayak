@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { resetPassword } from "./services/auth";
 import {
   Leaf,
   Sparkles,
@@ -135,8 +136,7 @@ function AuthModal({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  if (!open) return null;
+  const [forgotPassword, setForgotPassword] = useState(false);
 
   const inputStyle = {
     width: "100%",
@@ -157,6 +157,29 @@ function AuthModal({
     /* -----------------------------
        VALIDATION
     ----------------------------- */
+
+    if (forgotPassword) {
+      if (!email.trim()) {
+        setError("Please enter your email address.");
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        await resetPassword(email);
+
+        alert("Password reset link has been sent to your email.");
+
+        setForgotPassword(false);
+      } catch (err) {
+        setError(err.message || "Unable to send reset link.");
+      } finally {
+        setLoading(false);
+      }
+
+      return;
+    }
 
     if (mode === "signup" && !fullName.trim()) {
       setError("Please enter your full name.");
@@ -275,6 +298,131 @@ function AuthModal({
       setLoading(false);
     }
   };
+
+  if (!open) return null;
+
+  if (forgotPassword) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+          padding: 20,
+        }}
+      >
+        <div
+          style={{
+            background: COLORS.paper,
+            borderRadius: 18,
+            width: "100%",
+            maxWidth: 420,
+            padding: 28,
+            position: "relative",
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              position: "absolute",
+              top: 14,
+              right: 14,
+              border: 0,
+              background: "transparent",
+              cursor: "pointer",
+              color: COLORS.muted,
+            }}
+          >
+            <X size={20} />
+          </button>
+
+          <h2
+            style={{
+              fontFamily: "'Lora', Georgia, serif",
+              fontWeight: 700,
+              fontSize: 22,
+              color: COLORS.deep,
+              margin: "0 0 8px",
+            }}
+          >
+            Reset your password
+          </h2>
+
+          <p
+            style={{
+              color: COLORS.muted,
+              fontSize: 14,
+              marginBottom: 18,
+            }}
+          >
+            Enter your email and we'll send you a password reset link.
+          </p>
+
+          <input
+            style={inputStyle}
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+
+          {error && (
+            <p
+              style={{
+                color: "#b42318",
+                background: "#fff0ee",
+                padding: "10px 12px",
+                borderRadius: 8,
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </p>
+          )}
+
+          <button
+            onClick={handleAuth}
+            disabled={loading}
+            style={{
+              width: "100%",
+              background: loading ? "#8aa99a" : COLORS.green,
+              color: "white",
+              border: 0,
+              padding: 13,
+              borderRadius: 9,
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Sending..." : "Send Reset Link"}
+          </button>
+
+          <button
+            onClick={() => {
+              setForgotPassword(false);
+              setError("");
+            }}
+            style={{
+              width: "100%",
+              marginTop: 10,
+              background: "transparent",
+              border: 0,
+              color: COLORS.green,
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            Back to Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -439,6 +587,25 @@ function AuthModal({
               placeholder="Password"
               autoComplete="current-password"
             />
+            <button
+              type="button"
+              onClick={() => {
+                setForgotPassword(true);
+                setError("");
+                setPassword("");
+              }}
+              style={{
+                background: "none",
+                border: 0,
+                color: COLORS.green,
+                cursor: "pointer",
+                fontSize: 13,
+                padding: 0,
+                marginBottom: 10,
+              }}
+            >
+              Forgot password?
+            </button>
           </>
         ) : (
           /* =================================================

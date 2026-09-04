@@ -11,6 +11,8 @@ import Layout from "./Layout.jsx";
 import { useLanguage } from "./context/LanguageContext";
 import { translateTexts } from "./services/translation";
 
+import { useAuth } from "./context/AuthContext";
+
 const LANGUAGES = [
   { code: "hi", native: "हिंदी", name: "Hindi" },
   { code: "mr", native: "मराठी", name: "Marathi" },
@@ -89,25 +91,35 @@ const ENGLISH_TEXTS = {
   acres: "Acres",
   years: "Yrs",
   crops: "Crops",
+  districtUnavailable: "District unavailable",
+  stateUnavailable: "State unavailable",
+  noCropsAdded: "No crops added",
+  notProvided: "Not provided",
+  crop: "Crop",
 };
 
 export default function ProfilePage() {
   const { language, setLanguage } = useLanguage();
+  const { farmerData } = useAuth();
 
   const [alerts, setAlerts] = useState(INITIAL_ALERTS);
-
   const [translations, setTranslations] = useState(ENGLISH_TEXTS);
   const [isTranslating, setIsTranslating] = useState(false);
 
+  const profile = farmerData?.profile;
+  const farm = farmerData?.farm;
+  const crops = farmerData?.crops || [];
+
   /*
-   * Convert the global language code into the language
-   * object used by the buttons.
+   * Convert the global language code into the language object
+   * used by the language selector.
    */
   const selectedLanguage =
     LANGUAGES.find((item) => item.code === language) || LANGUAGES[4];
 
   /*
    * Translate Profile page whenever the global language changes.
+   * The translation API is used here only; translation.js is unchanged.
    */
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +127,7 @@ export default function ProfilePage() {
     async function loadTranslations() {
       if (!language || language === "en") {
         setTranslations(ENGLISH_TEXTS);
+        setIsTranslating(false);
         return;
       }
 
@@ -172,18 +185,12 @@ export default function ProfilePage() {
 
   /*
    * Global language change.
-   *
-   * This is important:
-   * We DON'T maintain a separate selectedLanguage state anymore.
-   * setLanguage() changes the language for the whole application.
+   * This changes the language for the whole application.
    */
   function handleLanguageChange(languageCode) {
     setLanguage(languageCode);
   }
 
-  /*
-   * Use translated notification text.
-   */
   const translatedAlerts = [
     {
       title: translations.weatherAlerts,
@@ -206,6 +213,22 @@ export default function ProfilePage() {
       description: translations.yieldRiskDescription,
     },
   ];
+
+  const farmArea =
+    farm?.area !== null && farm?.area !== undefined
+      ? `${farm.area} ${farm?.area_unit || translations.acres}`
+      : "--";
+
+  const cropCountLabel =
+    crops.length === 1
+      ? `1 ${translations.crop}`
+      : `${crops.length} ${translations.crops}`;
+
+  const experienceValue =
+    profile?.experience_years !== null &&
+    profile?.experience_years !== undefined
+      ? `${profile.experience_years} ${translations.years}`
+      : "--";
 
   return (
     <Layout title={translations.profile}>
@@ -231,11 +254,12 @@ export default function ProfilePage() {
               </div>
 
               <h3 className="mt-4 font-serif text-2xl font-bold">
-                Ramesh Patil
+                {profile?.name || translations.farmer}
               </h3>
 
               <p className="mt-1 text-sm text-white/70">
-                {translations.farmer} · {translations.maharashtra}
+                {translations.farmer} ·{" "}
+                {profile?.state || translations.maharashtra}
               </p>
 
               <div className="my-5 h-px w-full bg-white/20" />
@@ -243,21 +267,21 @@ export default function ProfilePage() {
               {/* Stats */}
               <div className="grid w-full grid-cols-3 gap-3">
                 <div>
-                  <p className="text-lg font-bold">4.2 Acres</p>
+                  <p className="text-lg font-bold">{farmArea}</p>
                   <p className="text-xs text-white/60">
                     {translations.farmSize}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-lg font-bold">12 Yrs</p>
+                  <p className="text-lg font-bold">{experienceValue}</p>
                   <p className="text-xs text-white/60">
                     {translations.experience}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-lg font-bold">2 Crops</p>
+                  <p className="text-lg font-bold">{cropCountLabel}</p>
                   <p className="text-xs text-white/60">
                     {translations.active}
                   </p>
@@ -279,7 +303,8 @@ export default function ProfilePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  Nashik, Maharashtra 422001
+                  {profile?.district || translations.districtUnavailable},{" "}
+                  {profile?.state || translations.stateUnavailable}
                 </p>
               </div>
             </div>
@@ -298,7 +323,20 @@ export default function ProfilePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  Cotton (2.5 ac) · Wheat (1.7 ac)
+                  {crops.length > 0
+                    ? crops
+                        .map(
+                          (crop) =>
+                            `${crop.crop_name}${
+                              crop.acreage
+                                ? ` (${crop.acreage} ${
+                                    farm?.area_unit || "acre"
+                                  })`
+                                : ""
+                            }`
+                        )
+                        .join(" · ")
+                    : translations.noCropsAdded}
                 </p>
               </div>
             </div>
@@ -336,7 +374,7 @@ export default function ProfilePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold text-[#24352a]">
-                  +91 98765 43210
+                  {profile?.phone || translations.notProvided}
                 </p>
               </div>
             </div>

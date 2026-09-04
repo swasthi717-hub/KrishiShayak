@@ -3,12 +3,12 @@ import { supabase } from "../lib/supabase";
 // ===============================
 // SIGN UP
 // ===============================
-export const signUp = async ({
+export async function signUp({
   fullName,
   email,
   phone,
   password,
-}) => {
+}) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -16,7 +16,7 @@ export const signUp = async ({
     options: {
       data: {
         name: fullName,
-        phone: phone || "",
+        phone: phone || null,
         preferred_language: "hi",
       },
     },
@@ -27,7 +27,7 @@ export const signUp = async ({
   }
 
   return data;
-};
+}
 
 
 // ===============================
@@ -74,4 +74,37 @@ export const getCurrentUser = async () => {
   }
 
   return user;
+};
+
+// ===============================
+// FORGOT PASSWORD
+// ===============================
+export const resetPassword = async (email) => {
+  const { data, error } =
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
+
+// ===============================
+// UPDATE PASSWORD
+// ===============================
+export const updatePassword = async (newPassword) => {
+  const { data, error } =
+    await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 };
