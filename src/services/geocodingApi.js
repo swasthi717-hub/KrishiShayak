@@ -1,15 +1,15 @@
-const NOMINATIM_SEARCH_URL =
-  "https://nominatim.openstreetmap.org/search";
-
-const NOMINATIM_REVERSE_URL =
-  "https://nominatim.openstreetmap.org/reverse";
+const NOMINATIM_BASE_URL =
+  "https://nominatim.openstreetmap.org";
 
 /* ---------------- FORWARD GEOCODING ---------------- */
 /*
  * Converts the state + district saved during onboarding
  * into latitude and longitude.
+ *
+ * state + district
+ *       ↓
+ * latitude + longitude
  */
-
 export async function getCoordinatesFromLocation(
   state,
   district
@@ -18,9 +18,9 @@ export async function getCoordinatesFromLocation(
     const query = `${district}, ${state}, India`;
 
     const response = await fetch(
-      `${NOMINATIM_SEARCH_URL}?q=${encodeURIComponent(
+      `${NOMINATIM_BASE_URL}/search?q=${encodeURIComponent(
         query
-      )}&format=json&limit=1&countrycodes=in`,
+      )}&format=json&limit=1&addressdetails=1&countrycodes=in`,
       {
         headers: {
           Accept: "application/json",
@@ -30,7 +30,7 @@ export async function getCoordinatesFromLocation(
 
     if (!response.ok) {
       throw new Error(
-        `Geocoding failed: ${response.status}`
+        `Forward geocoding failed: ${response.status}`
       );
     }
 
@@ -42,10 +42,12 @@ export async function getCoordinatesFromLocation(
       );
     }
 
+    const result = data[0];
+
     return {
-      latitude: Number(data[0].lat),
-      longitude: Number(data[0].lon),
-      displayName: data[0].display_name || "",
+      latitude: Number(result.lat),
+      longitude: Number(result.lon),
+      displayName: result.display_name || "",
     };
   } catch (error) {
     console.error(
@@ -59,17 +61,16 @@ export async function getCoordinatesFromLocation(
 
 /* ---------------- REVERSE GEOCODING ---------------- */
 /*
- * Converts latitude + longitude into a location.
- * Keep this if another part of your project uses it.
+ * Converts latitude + longitude into a readable
+ * state / district / city location.
  */
-
 export async function reverseGeocode(
   latitude,
   longitude
 ) {
   try {
     const response = await fetch(
-      `${NOMINATIM_REVERSE_URL}?lat=${encodeURIComponent(
+      `${NOMINATIM_BASE_URL}/reverse?lat=${encodeURIComponent(
         latitude
       )}&lon=${encodeURIComponent(
         longitude
@@ -88,7 +89,6 @@ export async function reverseGeocode(
     }
 
     const data = await response.json();
-
     const address = data?.address || {};
 
     return {
@@ -121,4 +121,19 @@ export async function reverseGeocode(
 
     throw error;
   }
+}
+
+/* ---------------- LOCATION NAME ---------------- */
+/*
+ * Backward-compatible helper.
+ * Returns the same location object as reverseGeocode().
+ */
+export async function getLocationName(
+  latitude,
+  longitude
+) {
+  return reverseGeocode(
+    latitude,
+    longitude
+  );
 }

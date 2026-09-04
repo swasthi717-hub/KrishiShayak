@@ -19,28 +19,68 @@ import {
 } from "lucide-react";
 
 import { getWeather } from "./services/weatherApi.js";
-import { getCurrentLocation } from "./services/location.js";
-import { getLocationName } from "./services/geocodingApi.js";
+import { getCoordinatesFromLocation } from "./services/geocodingApi.js";
+import { supabase } from "./lib/supabase.js";
+import { useAuth } from "./context/AuthContext.jsx";
 
 
-/* ---------------- NAVIGATION ---------------- */
+// ==================================================
+// NAVIGATION
+// ==================================================
 
 const NAV_ITEMS = [
-  { label: "Home", icon: Home, path: "/dashboard" },
-  { label: "AI Copilot", icon: Mic, path: "/ai-copilot" },
-  { label: "Weather", icon: CloudSun, path: "/weather" },
-  { label: "Crop Scanner", icon: Camera, path: "/crop-scanner" },
-  { label: "Mandi Market", icon: TrendingUp, path: "/mandi-market" },
-  { label: "Farm Dashboard", icon: BarChart3, path: "/farm-dashboard" },
-  { label: "Smart Alerts", icon: Bell, path: "/alerts", badge: 3 },
-  { label: "Profile", icon: User, path: "/profile" },
+  {
+    label: "Home",
+    icon: Home,
+    path: "/dashboard",
+  },
+  {
+    label: "AI Copilot",
+    icon: Mic,
+    path: "/ai-copilot",
+  },
+  {
+    label: "Weather",
+    icon: CloudSun,
+    path: "/weather",
+  },
+  {
+    label: "Crop Scanner",
+    icon: Camera,
+    path: "/crop-scanner",
+  },
+  {
+    label: "Mandi Market",
+    icon: TrendingUp,
+    path: "/mandi-market",
+  },
+  {
+    label: "Farm Dashboard",
+    icon: BarChart3,
+    path: "/farm-dashboard",
+  },
+  {
+    label: "Smart Alerts",
+    icon: Bell,
+    path: "/alerts",
+    badge: 3,
+  },
+  {
+    label: "Profile",
+    icon: User,
+    path: "/profile",
+  },
 ];
 
 
-/* ---------------- WEATHER HELPER ---------------- */
+// ==================================================
+// WEATHER HELPER
+// ==================================================
 
 function getWeatherText(code) {
-  if (code === 0) return "Clear Sky";
+  if (code === 0) {
+    return "Clear Sky";
+  }
 
   if (code === 1 || code === 2) {
     return "Partly Cloudy";
@@ -71,11 +111,27 @@ function getWeatherText(code) {
   }
 
   if (
+    code === 71 ||
+    code === 73 ||
+    code === 75 ||
+    code === 77
+  ) {
+    return "Snow";
+  }
+
+  if (
     code === 80 ||
     code === 81 ||
     code === 82
   ) {
     return "Rain Showers";
+  }
+
+  if (
+    code === 85 ||
+    code === 86
+  ) {
+    return "Snow Showers";
   }
 
   if (
@@ -90,7 +146,9 @@ function getWeatherText(code) {
 }
 
 
-/* ---------------- ALERTS ---------------- */
+// ==================================================
+// ALERTS
+// ==================================================
 
 const ALERTS = [
   {
@@ -135,7 +193,9 @@ const ALERTS = [
 ];
 
 
-/* ---------------- STATS ---------------- */
+// ==================================================
+// STATS
+// ==================================================
 
 const STATS = [
   {
@@ -145,6 +205,7 @@ const STATS = [
     sub: "+8% vs last season",
     theme: "green",
   },
+
   {
     icon: TrendingUp,
     value: "₹1.1L",
@@ -152,6 +213,7 @@ const STATS = [
     sub: "This season",
     theme: "green",
   },
+
   {
     icon: Activity,
     value: "82/100",
@@ -159,6 +221,7 @@ const STATS = [
     sub: "Good condition",
     theme: "blue",
   },
+
   {
     icon: Bell,
     value: "3 New",
@@ -169,7 +232,9 @@ const STATS = [
 ];
 
 
-/* ---------------- THEMES ---------------- */
+// ==================================================
+// THEMES
+// ==================================================
 
 const ALERT_THEMES = {
   red: {
@@ -202,7 +267,9 @@ const STAT_THEMES = {
 };
 
 
-/* ---------------- SIDEBAR ---------------- */
+// ==================================================
+// SIDEBAR
+// ==================================================
 
 function Sidebar() {
   const navigate = useNavigate();
@@ -210,7 +277,7 @@ function Sidebar() {
   return (
     <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-[#e5dfd2] bg-white">
 
-      {/* Logo */}
+      {/* LOGO */}
 
       <div className="flex items-center gap-2 px-5 py-5">
 
@@ -233,7 +300,7 @@ function Sidebar() {
       </div>
 
 
-      {/* Navigation */}
+      {/* NAVIGATION */}
 
       <nav className="flex-1 space-y-1 px-3">
 
@@ -251,8 +318,11 @@ function Sidebar() {
             >
 
               <span className="flex items-center gap-3">
+
                 <Icon size={18} />
+
                 {label}
+
               </span>
 
               {badge && (
@@ -262,13 +332,14 @@ function Sidebar() {
               )}
 
             </button>
+
           )
         )}
 
       </nav>
 
 
-      {/* User */}
+      {/* USER */}
 
       <div className="m-3 flex items-center gap-3 rounded-xl bg-[#f4f1e7] p-3">
 
@@ -295,7 +366,9 @@ function Sidebar() {
 }
 
 
-/* ---------------- TOP BAR ---------------- */
+// ==================================================
+// TOP BAR
+// ==================================================
 
 function TopBar() {
   const navigate = useNavigate();
@@ -335,7 +408,9 @@ function TopBar() {
 }
 
 
-/* ---------------- HERO BANNER ---------------- */
+// ==================================================
+// HERO BANNER
+// ==================================================
 
 function HeroBanner({
   weatherData,
@@ -504,7 +579,9 @@ function HeroBanner({
 }
 
 
-/* ---------------- ALERT CARD ---------------- */
+// ==================================================
+// ALERT CARD
+// ==================================================
 
 function AlertCard({
   emoji,
@@ -563,7 +640,9 @@ function AlertCard({
 }
 
 
-/* ---------------- ACTION PLAN ---------------- */
+// ==================================================
+// ACTION PLAN
+// ==================================================
 
 function ActionPlanBanner({
   weatherData,
@@ -639,7 +718,9 @@ function ActionPlanBanner({
 }
 
 
-/* ---------------- STAT CARD ---------------- */
+// ==================================================
+// STAT CARD
+// ==================================================
 
 function StatCard({
   icon: Icon,
@@ -687,9 +768,15 @@ function StatCard({
 }
 
 
-/* ---------------- DASHBOARD ---------------- */
+// ==================================================
+// DASHBOARD
+// ==================================================
 
 export default function KrishiShayakDashboard() {
+
+  const navigate = useNavigate();
+
+  const { user } = useAuth();
 
   const [weatherData, setWeatherData] =
     useState(null);
@@ -701,7 +788,9 @@ export default function KrishiShayakDashboard() {
     useState(true);
 
 
-  /* ---------------- LOAD LOCATION + WEATHER ---------------- */
+  // ==================================================
+  // LOAD ONBOARDING LOCATION + WEATHER
+  // ==================================================
 
   useEffect(() => {
 
@@ -711,35 +800,106 @@ export default function KrishiShayakDashboard() {
 
         setWeatherLoading(true);
 
-        // Get user's coordinates
-        const location =
-          await getCurrentLocation();
+        // ------------------------------------------
+        // Check logged-in user
+        // ------------------------------------------
 
-        // Convert coordinates into city/state
-        const locationData =
-          await getLocationName(
-            location.latitude,
-            location.longitude
+        if (!user) {
+          throw new Error(
+            "You must be logged in."
+          );
+        }
+
+
+        // ------------------------------------------
+        // Get state + district from Supabase
+        // These are the values entered during
+        // onboarding.
+        // ------------------------------------------
+
+        const {
+          data: profile,
+          error: profileError,
+        } = await supabase
+          .from("profiles")
+          .select("state, district")
+          .eq("user_id", user.id)
+          .single();
+
+
+        if (profileError) {
+          throw profileError;
+        }
+
+
+        const state =
+          profile?.state?.trim();
+
+        const district =
+          profile?.district?.trim();
+
+
+        if (!state || !district) {
+          throw new Error(
+            "Your state and district are not available. Please update your farm location."
+          );
+        }
+
+
+        console.log(
+          "Dashboard onboarding location:",
+          {
+            state,
+            district,
+          }
+        );
+
+
+        // ------------------------------------------
+        // Convert onboarding location into
+        // coordinates.
+        // ------------------------------------------
+
+        const location =
+          await getCoordinatesFromLocation(
+            state,
+            district
           );
 
-        // Fetch weather
+
+        console.log(
+          "Dashboard coordinates:",
+          location
+        );
+
+
+        // ------------------------------------------
+        // Fetch weather for onboarding location.
+        // ------------------------------------------
+
         const data =
           await getWeather(
             location.latitude,
             location.longitude
           );
 
-        console.log(
-          "Dashboard location:",
-          locationData
-        );
 
         console.log(
           "Dashboard weather:",
           data
         );
 
-        setLocationName(locationData);
+
+        // ------------------------------------------
+        // Display onboarding location.
+        // ------------------------------------------
+
+        setLocationName({
+          city: district,
+          state: state,
+        });
+
+
         setWeatherData(data);
 
       } catch (error) {
@@ -754,13 +914,20 @@ export default function KrishiShayakDashboard() {
         setWeatherLoading(false);
 
       }
+
     }
 
 
-    loadDashboardWeather();
+    if (user) {
+      loadDashboardWeather();
+    }
 
-  }, []);
+  }, [user]);
 
+
+  // ==================================================
+  // RENDER
+  // ==================================================
 
   return (
     <div className="flex h-screen w-full bg-[#faf7ef] font-sans text-[#24352a]">
@@ -778,7 +945,9 @@ export default function KrishiShayakDashboard() {
           <div className="mx-auto max-w-5xl space-y-6">
 
 
-            {/* HERO */}
+            {/* ==================================================
+                HERO
+            ================================================== */}
 
             <HeroBanner
               weatherData={weatherData}
@@ -787,7 +956,9 @@ export default function KrishiShayakDashboard() {
             />
 
 
-            {/* ALERTS */}
+            {/* ==================================================
+                ALERTS
+            ================================================== */}
 
             <div>
 
@@ -799,11 +970,16 @@ export default function KrishiShayakDashboard() {
 
 
                 <button
-                  onClick={() => navigate("/alerts")}
+                  onClick={() =>
+                    navigate("/alerts")
+                  }
                   className="flex items-center gap-1 text-sm font-medium text-[#1f5b3d] hover:text-[#173b27]"
                 >
+
                   View All
+
                   <ChevronRight size={14} />
+
                 </button>
 
               </div>
@@ -825,14 +1001,18 @@ export default function KrishiShayakDashboard() {
             </div>
 
 
-            {/* AI ACTION PLAN */}
+            {/* ==================================================
+                AI ACTION PLAN
+            ================================================== */}
 
             <ActionPlanBanner
               weatherData={weatherData}
             />
 
 
-            {/* STATS */}
+            {/* ==================================================
+                STATS
+            ================================================== */}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
 
