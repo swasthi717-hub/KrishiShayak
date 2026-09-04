@@ -4,6 +4,7 @@ import { supabase } from "./lib/supabase";
 import { useAuth } from "./context/AuthContext";
 import { getCurrentLocation } from "./services/location";
 
+
 const languages = [
   { code: "hi", name: "हिन्दी", english: "Hindi" },
   { code: "en", name: "English", english: "English" },
@@ -219,7 +220,7 @@ const translations = {
 };
 
 export default function OnboardingPage() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   const [language, setLanguage] = useState("hi");
@@ -275,6 +276,7 @@ export default function OnboardingPage() {
             preferred_language: language,
             state: state.trim() || null,
             district: district.trim() || null,
+            onboarding_completed: false,
           },
           {
             onConflict: "user_id",
@@ -371,8 +373,12 @@ export default function OnboardingPage() {
         throw onboardingError;
       }
 
+      // Refresh the profile state so ProtectedRoute
+      // immediately knows onboarding is complete
+      await refreshProfile();
+
       // Go to dashboard
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
 
     } catch (err) {
       console.error("Location error:", err);
@@ -396,44 +402,30 @@ export default function OnboardingPage() {
     }
   };
 
-  //Location permission skip
   const handleSkipLocation = async () => {
-    setError("");
-    setLoading(true);
-
     try {
-      if (!user) {
-        throw new Error("You must be logged in.");
-      }
+      setLoading(true);
+      setError("");
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({
           onboarding_completed: true,
         })
-        .eq("user_id", user.id)
-        .select()
-        .single();
+        .eq("user_id", user.id);
 
       if (error) {
         throw error;
       }
 
-      if (!data) {
-        throw new Error("Could not find your profile.");
-      }
-
-      console.log("Profile after skipping location:", data);
-
-      if (data.onboarding_completed !== true) {
-        throw new Error("Onboarding status was not saved.");
-      }
+      await refreshProfile();
 
       navigate("/dashboard", { replace: true });
-
-    } catch (err) {
-      console.error("Skip location error:", err);
-      setError(err.message || "Something went wrong.");
+    } catch (error) {
+      console.error("Error completing onboarding:", error);
+      setError(
+        error.message || "Unable to complete onboarding. Please try again."
+      );
     } finally {
       setLoading(false);
     }

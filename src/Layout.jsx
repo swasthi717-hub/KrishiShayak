@@ -14,9 +14,10 @@ import {
   HelpCircle,
   WifiOff,
   RefreshCw,
+  LogOut,
 } from "lucide-react";
 
-import { getCurrentUser } from "./services/auth";
+import { getCurrentUser, logout } from "./services/auth";
 import { requestAndSaveFCMToken, listenForForegroundMessages } from "./firebase";
 import { useOfflineSync } from "./hooks/useOfflineSync";
 
@@ -147,6 +148,14 @@ function SyncStatusBadge() {
 
 function TopBar({ title }) {
   const navigate = useNavigate();
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
 
   return (
     <header className="flex items-center justify-between border-b border-[#e5dfd2] bg-white px-4 py-3 md:px-6">
@@ -180,6 +189,13 @@ function TopBar({ title }) {
           aria-label="Profile"
         >
           <User size={16} />
+        </button>
+        <button
+          onClick={handleLogout}
+          className="flex items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+          aria-label="Logout"
+        >
+          <LogOut size={18} />
         </button>
 
       </div>

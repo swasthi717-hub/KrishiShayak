@@ -3,12 +3,12 @@ import { supabase } from "../lib/supabase";
 // ===============================
 // SIGN UP
 // ===============================
-export async function signUp({
+export const signUp = async ({
   fullName,
   email,
   phone,
   password,
-}) {
+}) => {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -16,7 +16,7 @@ export async function signUp({
     options: {
       data: {
         name: fullName,
-        phone: phone || null,
+        phone: phone || "",
         preferred_language: "hi",
       },
     },
@@ -27,8 +27,7 @@ export async function signUp({
   }
 
   return data;
-}
-
+};
 
 // ===============================
 // LOGIN
@@ -47,7 +46,6 @@ export const login = async (email, password) => {
   return data;
 };
 
-
 // ===============================
 // LOGOUT
 // ===============================
@@ -58,7 +56,6 @@ export const logout = async () => {
     throw error;
   }
 };
-
 
 // ===============================
 // GET CURRENT USER
@@ -77,13 +74,12 @@ export const getCurrentUser = async () => {
 };
 
 // ===============================
-// FORGOT PASSWORD
+// UPDATE PASSWORD
 // ===============================
-export const resetPassword = async (email) => {
-  const { data, error } =
-    await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+export const updatePassword = async (newPassword) => {
+  const { data, error } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
 
   if (error) {
     throw error;
@@ -92,15 +88,13 @@ export const resetPassword = async (email) => {
   return data;
 };
 
-
 // ===============================
-// UPDATE PASSWORD
+// RESET PASSWORD
 // ===============================
-export const updatePassword = async (newPassword) => {
-  const { data, error } =
-    await supabase.auth.updateUser({
-      password: newPassword,
-    });
+export const resetPassword = async (email) => {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(
+    email
+  );
 
   if (error) {
     throw error;
